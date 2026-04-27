@@ -51,6 +51,23 @@ export function formatDate(dateStr: string): string {
 }
 
 /**
+ * Format date as short DD.MM (no year)
+ * e.g., "2024-01-15" → "15.01"
+ */
+export function formatDateShort(dateStr: string): string {
+  const parts = dateStr.split('-');
+  if (parts.length !== 3) return dateStr;
+  return `${parts[2]}.${parts[1]}`;
+}
+
+/**
+ * Format a Date object as YYYY-MM-DD string
+ */
+export function dateToStr(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/**
  * Get today's date as ISO string YYYY-MM-DD
  */
 export function getTodayStr(): string {

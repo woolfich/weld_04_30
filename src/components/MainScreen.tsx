@@ -2,8 +2,8 @@
 
 import React, { useState, useCallback, useMemo, useRef } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db, type Welder, type WorkEntry, type ExportData, type Norm } from '@/lib/db';
-import { normalizeArticle, formatQty, formatQtyShort, getTodayStr, calcHours, sortByUpdatedDesc } from '@/lib/utils';
+import { db, type Welder, type WorkEntry, type ExportData, type Norm, type Plan } from '@/lib/db';
+import { normalizeArticle, formatQty, formatQtyShort, getTodayStr, calcHours, sortByUpdatedDesc, formatDateShort, dateToStr } from '@/lib/utils';
 import { LongPressWrapper } from '@/components/LongPressWrapper';
 import { useAppStore } from '@/lib/store';
 import { Plus, Pencil, Trash2, Info, Download, Upload } from 'lucide-react';
@@ -48,42 +48,60 @@ export function MainScreen() {
     return parts.join('; ');
   }, [workEntries, today]);
 
-  // Get all-time work summary for a welder (for info modal)
-  // Shows each article with total quantity (not split by plan - "артикул не делится на части"), most recent on top
-  const getWelderSummary = useCallback((welderId: number): { article: string; qty: number; hours: number }[] => {
+  // Get work summary for a welder grouped by plan (for info modal)
+  // Shows each article per plan with plan date range, most recent plan on top
+  const getWelderSummary = useCallback((welderId: number): { article: string; qty: number; hours: number; planLabel: string; planCreatedAt: Date }[] => {
     const entries = workEntries.filter(e => e.welderId === welderId);
 
-    // Group by article and sum quantities
-    const articleMap = new Map<string, { qty: number; lastUpdated: Date }>();
+    // Group by (article, planId)
+    const groupMap = new Map<string, { article: string; qty: number; planId: number }>();
     for (const entry of entries) {
-      const existing = articleMap.get(entry.article);
+      const key = `${entry.article}__${entry.planId}`;
+      const existing = groupMap.get(key);
       if (existing) {
         existing.qty += entry.quantity;
-        if (new Date(entry.updatedAt) > new Date(existing.lastUpdated)) {
-          existing.lastUpdated = new Date(entry.updatedAt);
-        }
       } else {
-        articleMap.set(entry.article, {
-          qty: entry.quantity,
-          lastUpdated: new Date(entry.updatedAt),
-        });
+        groupMap.set(key, { article: entry.article, qty: entry.quantity, planId: entry.planId });
       }
     }
 
-    const result: { article: string; qty: number; hours: number }[] = [];
-    for (const [article, data] of articleMap) {
-      const norm = norms.find(n => n.article === article);
+    const result: { article: string; qty: number; hours: number; planLabel: string; planCreatedAt: Date }[] = [];
+    for (const [, data] of groupMap) {
+      const norm = norms.find(n => n.article === data.article);
       const hours = norm ? calcHours(data.qty, norm.timeHours) : 0;
-      result.push({ article, qty: data.qty, hours });
+
+      const plan = plans.find((p: Plan) => p.id === data.planId);
+      let planLabel = '';
+      if (plan) {
+        if (plan.completedAt) {
+          // Completed plan - show date range
+          const startStr = formatDateShort(dateToStr(new Date(plan.createdAt)));
+          const endStr = formatDateShort(dateToStr(new Date(plan.completedAt)));
+          if (startStr === endStr) {
+            planLabel = startStr;
+          } else {
+            planLabel = `${startStr}-${endStr}`;
+          }
+        }
+        // Active plan - no date label (user said "в текущем плане дата не ставится")
+      }
+
+      result.push({
+        article: data.article,
+        qty: data.qty,
+        hours,
+        planLabel,
+        planCreatedAt: plan ? new Date(plan.createdAt) : new Date(0),
+      });
     }
 
-    // Sort: most recent change on top
+    // Sort: most recently created plan first, then by article
     return result.sort((a, b) => {
-      const lastA = articleMap.get(a.article)?.lastUpdated || new Date(0);
-      const lastB = articleMap.get(b.article)?.lastUpdated || new Date(0);
-      return lastB.getTime() - lastA.getTime();
+      const dateDiff = b.planCreatedAt.getTime() - a.planCreatedAt.getTime();
+      if (dateDiff !== 0) return dateDiff;
+      return a.article.localeCompare(b.article, 'ru');
     });
-  }, [workEntries, norms]);
+  }, [workEntries, norms, plans]);
 
   const handleAdd = useCallback(async () => {
     const name = nameInput.trim();
@@ -336,13 +354,13 @@ export function MainScreen() {
 
       {/* Info Modal */}
       <Dialog open={infoModal.open} onOpenChange={(open) => setInfoModal({ open, welderId: null })}>
-        <DialogContent className="max-w-[300px]">
+        <DialogContent className="max-w-[320px]">
           <DialogHeader>
             <DialogTitle>
               {welders.find(w => w.id === infoModal.welderId)?.name} — Изделия
             </DialogTitle>
           </DialogHeader>
-          <div className="py-2 max-h-64 overflow-y-auto">
+          <div className="py-2 max-h-72 overflow-y-auto">
             {infoModal.welderId && (() => {
               const summary = getWelderSummary(infoModal.welderId);
               if (summary.length === 0) {
@@ -351,10 +369,17 @@ export function MainScreen() {
               return (
                 <div className="space-y-1.5">
                   {summary.map((item, idx) => (
-                    <div key={idx} className="flex justify-between text-sm">
-                      <span className="font-mono font-semibold">{item.article}</span>
-                      <span className="font-mono">{formatQtyShort(item.qty)} шт</span>
-                      {item.hours > 0 && <span className="text-muted-foreground">{formatQtyShort(item.hours)} ч</span>}
+                    <div key={idx} className="flex items-baseline justify-between text-sm gap-1">
+                      <div className="flex items-baseline gap-1 min-w-0">
+                        <span className="font-mono font-semibold">{item.article}</span>
+                        {item.planLabel && (
+                          <span className="text-xs text-muted-foreground shrink-0">({item.planLabel})</span>
+                        )}
+                      </div>
+                      <div className="flex items-baseline gap-2 shrink-0">
+                        <span className="font-mono">{formatQtyShort(item.qty)} шт</span>
+                        {item.hours > 0 && <span className="text-muted-foreground text-xs">{formatQtyShort(item.hours)} ч</span>}
+                      </div>
                     </div>
                   ))}
                 </div>
