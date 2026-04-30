@@ -253,16 +253,18 @@ export function MainScreen() {
             <button
               onClick={handleImport}
               className="h-10 flex items-center justify-center gap-1 rounded-lg border border-border text-xs active:bg-accent sm:px-2.5"
+              aria-label="Импорт"
+              title="Импорт"
             >
               <Upload className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Импорт</span>
             </button>
             <button
               onClick={handleExport}
               className="h-10 flex items-center justify-center gap-1 rounded-lg border border-border text-xs active:bg-accent sm:px-2.5"
+              aria-label="Экспорт"
+              title="Экспорт"
             >
               <Download className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Экспорт</span>
             </button>
           </div>
         </div>
