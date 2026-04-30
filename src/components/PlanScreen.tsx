@@ -52,8 +52,8 @@ export function PlanScreen() {
 
   // Sort plans: active first (sorted by updatedAt desc), then completed
   const sortedPlans = useMemo(() => {
-    const active = plans.filter(p => !p.completedAt).sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
-    const completed = plans.filter(p => p.completedAt).sort((a, b) => new Date(b.completedAt!).getTime() - new Date(a.completedAt!).getTime());
+    const active = plans.filter(p => !p.completedAt);
+    const completed = plans.filter(p => p.completedAt);
     return [...active, ...completed];
   }, [plans]);
 

@@ -16,11 +16,7 @@ export function MainScreen() {
   const [editModal, setEditModal] = useState<{ open: boolean; welder: Welder | null }>({ open: false, welder: null });
   const [editName, setEditName] = useState('');
   const [infoModal, setInfoModal] = useState<{ open: boolean; welderId: number | null }>({ open: false, welderId: null });
-  const [sortField, setSortField] = useState<'name' | 'date'>('date');
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
-  const [searchTerm, setSearchTerm] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   const { setActiveScreen, setActiveWelderId } = useAppStore();
   const { toast } = useToast();
@@ -31,32 +27,7 @@ export function MainScreen() {
   const plans = useLiveQuery(() => db.plans.toArray(), []) || [];
 
   const today = getTodayStr();
-  const sortedWelders = useMemo(() => {
-    let result = [...welders];
-    
-    // Apply search filter
-    if (searchTerm) {
-      const normalizedSearch = normalizeArticle(searchTerm);
-      result = result.filter(w => normalizeArticle(w.name).includes(normalizedSearch));
-    }
-    
-    // Apply sorting
-    switch (sortField) {
-      case 'name':
-        result.sort((a, b) => a.name.localeCompare(b.name, 'ru'));
-        break;
-      case 'date':
-        result.sort((a, b) => new Date(b.updatedAt!).getTime() - new Date(a.updatedAt!).getTime());
-        break;
-    }
-    
-    // Apply sort order
-    if (sortOrder === 'desc' && sortField !== 'name') {
-      result.reverse();
-    }
-    
-    return result;
-  }, [welders, sortField, sortOrder, searchTerm]);
+  const sortedWelders = useMemo(() => sortByUpdatedDesc(welders), [welders]);
 
   // Get today's work summary for a welder (for the center of the row)
   const getTodaySummary = useCallback((welderId: number): string => {
@@ -259,28 +230,16 @@ export function MainScreen() {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Hidden file input for import */}
-      <input
-        type="file"
-        ref={fileInputRef}
-        accept=".json"
-        onChange={handleImport}
-        className="hidden"
-      />
-
       {/* Header */}
       <div className="flex-shrink-0 bg-card border-b border-border px-3 py-2">
-        <div className="flex flex-col gap-2">
-          {/* Search and Add */}
-          <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-2">
+          <div className="flex-1 flex items-center gap-1.5">
             <input
               type="text"
               value={nameInput}
               onChange={(e) => setNameInput(e.target.value)}
-              placeholder="Иванов И.И."
+              placeholder="Фамилия"
               className="flex-1 min-w-0 px-3 py-2 text-sm border border-border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring"
-              inputMode="text"
-              autoCapitalize="words"
               onKeyDown={(e) => { if (e.key === 'Enter') handleAdd(); }}
             />
             <button
@@ -290,42 +249,20 @@ export function MainScreen() {
               <Plus className="w-5 h-5" />
             </button>
           </div>
-
-          {/* Filters and Actions */}
-          <div className="flex items-center gap-1">
-            <div className="flex-1 flex items-center gap-1">
-              <select
-                value={sortField}
-                onChange={(e) => setSortField(e.target.value as 'name' | 'date')}
-                className="h-10 px-2 text-xs border border-border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring"
-              >
-                <option value="date">Сортировка по дате</option>
-                <option value="name">Сортировка по имени</option>
-              </select>
-              
-              <select
-                value={sortOrder}
-                onChange={(e) => setSortOrder(e.target.value as 'asc' | 'desc')}
-                className="h-10 px-2 text-xs border border-border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring"
-              >
-                <option value="desc">По убыванию</option>
-                <option value="asc">По возрастанию</option>
-              </select>
-            </div>
-            
-            <button
-              onClick={handleImportClick}
-              className="flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-lg bg-secondary text-secondary-foreground active:opacity-80"
-            >
-              <Upload className="w-5 h-5" />
-            </button>
-            <button
-              onClick={handleExport}
-              className="flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-lg bg-secondary text-secondary-foreground active:opacity-80"
-            >
-              <Download className="w-5 h-5" />
-            </button>
-          </div>
+          <button
+            onClick={handleImport}
+            className="flex-shrink-0 px-2.5 h-10 flex items-center gap-1 rounded-lg border border-border text-xs active:bg-accent"
+          >
+            <Upload className="w-3.5 h-3.5" />
+            <span>Импорт</span>
+          </button>
+          <button
+            onClick={handleExport}
+            className="flex-shrink-0 px-2.5 h-10 flex items-center gap-1 rounded-lg border border-border text-xs active:bg-accent"
+          >
+            <Download className="w-3.5 h-3.5" />
+            <span>Экспорт</span>
+          </button>
         </div>
       </div>
 
@@ -339,16 +276,7 @@ export function MainScreen() {
       />
 
       {/* List */}
-      <div 
-        ref={scrollContainerRef}
-        className="flex-1 overflow-y-auto"
-        onScroll={() => {
-          // Reset pull-to-refresh if user scrolls down
-          if (scrollContainerRef.current?.scrollTop === 0) {
-            handlePullToRefresh();
-          }
-        }}
-      >
+      <div className="flex-1 overflow-y-auto">
         {sortedWelders.length === 0 ? (
           <div className="flex items-center justify-center h-32 text-muted-foreground text-sm">
             Добавьте сварщика
@@ -357,27 +285,25 @@ export function MainScreen() {
           <div className="divide-y divide-border">
             {sortedWelders.map((welder) => {
               const todaySummary = getTodaySummary(welder.id!);
+
               return (
                 <LongPressWrapper
                   key={welder.id}
                   onLongPress={() => handleEditOpen(welder)}
                 >
-                  <div 
-                    className="flex items-center px-4 py-3 active:bg-accent/50"
-                    onClick={() => handleViewWelder(welder.id!)}
+                  <div
+                    className="flex items-center px-4 py-3 gap-2 active:bg-accent/50 cursor-pointer"
+                    onClick={() => handleWelderClick(welder.id!)}
                   >
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1 text-sm">
-                        <span className="font-semibold truncate">{welder.name}</span>
-                      </div>
-                      {todaySummary && (
-                        <div className="text-xs text-muted-foreground truncate">
-                          {todaySummary}
-                        </div>
-                      )}
-                    </div>
+                    <span className="font-semibold text-sm min-w-0 truncate">{welder.name}</span>
+                    {todaySummary && (
+                      <span className="flex-1 text-xs text-muted-foreground truncate text-center">
+                        {todaySummary}
+                      </span>
+                    )}
+                    {!todaySummary && <span className="flex-1" />}
                     <button
-                      onClick={(e) => { e.stopPropagation(); setInfoModal({ open: true, welderId: welder.id }); }}
+                      onClick={(e) => { e.stopPropagation(); setInfoModal({ open: true, welderId: welder.id! }); }}
                       className="flex-shrink-0 p-1.5 text-muted-foreground hover:text-foreground active:bg-accent rounded-full"
                     >
                       <Info className="w-4 h-4" />
@@ -426,13 +352,15 @@ export function MainScreen() {
         </DialogContent>
       </Dialog>
 
-      {/* Info Modal - shows work summary grouped by plan */}
+      {/* Info Modal */}
       <Dialog open={infoModal.open} onOpenChange={(open) => setInfoModal({ open, welderId: null })}>
-        <DialogContent className="max-w-[300px]">
+        <DialogContent className="max-w-[320px]">
           <DialogHeader>
-            <DialogTitle>Сводка</DialogTitle>
+            <DialogTitle>
+              {welders.find(w => w.id === infoModal.welderId)?.name} — Изделия
+            </DialogTitle>
           </DialogHeader>
-          <div className="py-2 max-h-64 overflow-y-auto">
+          <div className="py-2 max-h-72 overflow-y-auto">
             {infoModal.welderId && (() => {
               const summary = getWelderSummary(infoModal.welderId);
               if (summary.length === 0) {
@@ -441,14 +369,16 @@ export function MainScreen() {
               return (
                 <div className="space-y-1.5">
                   {summary.map((item, idx) => (
-                    <div key={idx} className="flex justify-between text-sm">
-                      <div className="flex-1 min-w-0 pr-2">
-                        <div className="truncate">{item.article}</div>
-                        <div className="text-xs text-muted-foreground">{item.planLabel}</div>
+                    <div key={idx} className="flex items-baseline justify-between text-sm gap-1">
+                      <div className="flex items-baseline gap-1 min-w-0">
+                        <span className="font-mono font-semibold">{item.article}</span>
+                        {item.planLabel && (
+                          <span className="text-xs text-muted-foreground shrink-0">({item.planLabel})</span>
+                        )}
                       </div>
-                      <div className="text-right whitespace-nowrap">
-                        <div>{formatQtyShort(item.qty)} шт</div>
-                        <div className="text-xs text-muted-foreground">{formatQtyShort(item.hours)} ч</div>
+                      <div className="flex items-baseline gap-2 shrink-0">
+                        <span className="font-mono">{formatQtyShort(item.qty)} шт</span>
+                        {item.hours > 0 && <span className="text-muted-foreground text-xs">{formatQtyShort(item.hours)} ч</span>}
                       </div>
                     </div>
                   ))}

@@ -20,7 +20,7 @@ export function NormsScreen() {
   const [, setForceUpdate] = React.useState({});
 
   const norms = useLiveQuery(() => db.norms.toArray(), []) || [];
-  const sortedNorms = sortArticles(norms);
+  const sortedNorms = norms; // Убираем сортировку
 
   // Force refresh when component mounts
   React.useEffect(() => {
