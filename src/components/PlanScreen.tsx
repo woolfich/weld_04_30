@@ -3,9 +3,10 @@
 import React, { useState, useCallback, useMemo } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, type Plan } from '@/lib/db';
-import { normalizeArticle, formatQty, formatQtyShort, calcHours, formatDate } from '@/lib/utils';
+import { normalizeArticle, formatQty, formatQtyShort, calcHours, formatDate, forceRefresh } from '@/lib/utils';
 import { LongPressWrapper } from '@/components/LongPressWrapper';
 import { AutoComplete } from '@/components/AutoComplete';
+import { useAppStore } from '@/lib/store';
 import { Plus, Pencil, Trash2, Info } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -17,11 +18,24 @@ export function PlanScreen() {
   const [editModal, setEditModal] = useState<{ open: boolean; plan: Plan | null }>({ open: false, plan: null });
   const [editQty, setEditQty] = useState('');
   const [infoModal, setInfoModal] = useState<{ open: boolean; plan: Plan | null }>({ open: false, plan: null });
-
+  
+  // Добавляем принудительное обновление при изменении
+  const [, setForceUpdate] = React.useState({});
+  
   const norms = useLiveQuery(() => db.norms.toArray(), []) || [];
   const plans = useLiveQuery(() => db.plans.toArray(), []) || [];
   const workEntries = useLiveQuery(() => db.workEntries.toArray(), []) || [];
   const welders = useLiveQuery(() => db.welders.toArray(), []) || [];
+
+  // Force refresh when component mounts or when needed
+  React.useEffect(() => {
+    const interval = setInterval(() => {
+      // Force refresh periodically to ensure data is up-to-date
+      forceRefresh();
+    }, 1000); // Refresh every second when component is mounted
+
+    return () => clearInterval(interval);
+  }, []);
 
   // Norm articles for autocomplete
   const normArticles = useMemo(() => norms.map(n => n.article), [norms]);

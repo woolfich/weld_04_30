@@ -3,7 +3,7 @@
 import React from 'react';
 import { useAppStore, type Screen } from '@/lib/store';
 import { Home, ClipboardList, Target } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn, forceRefresh } from '@/lib/utils';
 
 const tabs: { id: Screen; label: string; icon: React.ReactNode }[] = [
   { id: 'main', label: 'Главная', icon: <Home className="w-5 h-5" /> },
@@ -17,6 +17,8 @@ export function TabBar() {
   const handleTabClick = (id: Screen) => {
     setActiveWelderId(null);
     setActiveScreen(id);
+    // Force refresh of data when switching screens
+    setTimeout(() => forceRefresh(), 100);
   };
 
   // КС (welder-card) is a sub-screen of Главная, so highlight Главная when on КС

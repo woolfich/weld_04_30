@@ -3,7 +3,7 @@
 import React, { useState, useCallback } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, type Norm } from '@/lib/db';
-import { normalizeArticle, formatQty, sortArticles } from '@/lib/utils';
+import { normalizeArticle, formatQty, sortArticles, forceRefresh } from '@/lib/utils';
 import { LongPressWrapper } from '@/components/LongPressWrapper';
 import { Plus, Pencil, Trash2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
@@ -16,8 +16,21 @@ export function NormsScreen() {
   const [editArticle, setEditArticle] = useState('');
   const [editHours, setEditHours] = useState('');
 
+  // Добавляем принудительное обновление при изменении
+  const [, setForceUpdate] = React.useState({});
+
   const norms = useLiveQuery(() => db.norms.toArray(), []) || [];
   const sortedNorms = sortArticles(norms);
+
+  // Force refresh when component mounts
+  React.useEffect(() => {
+    const interval = setInterval(() => {
+      // Force refresh periodically to ensure data is up-to-date
+      forceRefresh();
+    }, 1000); // Refresh every second when component is mounted
+
+    return () => clearInterval(interval);
+  }, []);
 
   const handleAdd = useCallback(async () => {
     const article = normalizeArticle(articleInput);
@@ -105,7 +118,7 @@ export function NormsScreen() {
       <div className="flex-1 overflow-y-auto">
         {sortedNorms.length === 0 ? (
           <div className="flex items-center justify-center h-32 text-muted-foreground text-sm">
-            Добавьте норму времени
+            Добавьте норму
           </div>
         ) : (
           <div className="divide-y divide-border">
@@ -114,9 +127,14 @@ export function NormsScreen() {
                 key={norm.id}
                 onLongPress={() => handleEditOpen(norm)}
               >
-                <div className="flex items-center justify-between px-4 py-3 active:bg-accent/50">
-                  <span className="font-mono font-semibold text-sm">{norm.article}</span>
-                  <span className="text-sm text-muted-foreground">{formatQty(norm.timeHours)} ч</span>
+                <div className="flex items-center px-4 py-3 active:bg-accent/50">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1 text-sm">
+                      <span className="font-mono font-semibold">{norm.article}</span>
+                      <span className="text-muted-foreground flex-1 text-center tracking-widest text-xs">· · · ·</span>
+                      <span className="font-mono">{formatQty(norm.timeHours)} ч</span>
+                    </div>
+                  </div>
                 </div>
               </LongPressWrapper>
             ))}
@@ -130,7 +148,7 @@ export function NormsScreen() {
           <DialogHeader>
             <DialogTitle>Редактировать норму</DialogTitle>
           </DialogHeader>
-          <div className="space-y-3 py-2">
+          <div className="py-2 space-y-4">
             <input
               type="text"
               value={editArticle}
@@ -139,13 +157,14 @@ export function NormsScreen() {
               className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring"
               inputMode="text"
               autoCapitalize="off"
+              autoCorrect="off"
             />
             <input
               type="text"
               value={editHours}
               onChange={(e) => setEditHours(e.target.value)}
-              placeholder="Норма (ч)"
-              className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring"
+              placeholder="Часы"
+              className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring text-right"
               inputMode="decimal"
             />
           </div>

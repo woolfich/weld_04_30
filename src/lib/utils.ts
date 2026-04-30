@@ -213,3 +213,21 @@ export function getDayTypeForDate(dateStr: string): 'workday' | 'sb' | 'vs' {
   if (day === 0) return 'vs';
   return 'workday';
 }
+
+/**
+ * Force refresh of Dexie live queries by briefly toggling a reactive variable
+ */
+let refreshCounter = 0;
+export function forceRefresh() {
+  // Increment counter to trigger re-renders in components using this value
+  refreshCounter++;
+  // Dispatch an event that components could potentially listen to
+  window.dispatchEvent(new CustomEvent('dexie-refresh', { detail: refreshCounter }));
+}
+
+// Export a way to subscribe to refresh events
+export function subscribeToRefresh(callback: (counter: number) => void) {
+  const handler = (e: any) => callback(e.detail);
+  window.addEventListener('dexie-refresh', handler);
+  return () => window.removeEventListener('dexie-refresh', handler);
+}
