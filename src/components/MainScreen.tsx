@@ -232,8 +232,8 @@ export function MainScreen() {
     <div className="flex flex-col h-full">
       {/* Header */}
       <div className="flex-shrink-0 bg-card border-b border-border px-3 py-2">
-        <div className="flex items-center gap-2">
-          <div className="flex-1 flex items-center gap-1.5">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <div className="flex w-full items-center gap-1.5 sm:flex-1">
             <input
               type="text"
               value={nameInput}
@@ -249,20 +249,22 @@ export function MainScreen() {
               <Plus className="w-5 h-5" />
             </button>
           </div>
-          <button
-            onClick={handleImport}
-            className="flex-shrink-0 px-2.5 h-10 flex items-center gap-1 rounded-lg border border-border text-xs active:bg-accent"
-          >
-            <Upload className="w-3.5 h-3.5" />
-            <span>Импорт</span>
-          </button>
-          <button
-            onClick={handleExport}
-            className="flex-shrink-0 px-2.5 h-10 flex items-center gap-1 rounded-lg border border-border text-xs active:bg-accent"
-          >
-            <Download className="w-3.5 h-3.5" />
-            <span>Экспорт</span>
-          </button>
+          <div className="grid w-full grid-cols-2 gap-2 sm:w-auto sm:flex sm:grid-cols-none sm:gap-2">
+            <button
+              onClick={handleImport}
+              className="h-10 flex items-center justify-center gap-1 rounded-lg border border-border text-xs active:bg-accent sm:px-2.5"
+            >
+              <Upload className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Импорт</span>
+            </button>
+            <button
+              onClick={handleExport}
+              className="h-10 flex items-center justify-center gap-1 rounded-lg border border-border text-xs active:bg-accent sm:px-2.5"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Экспорт</span>
+            </button>
+          </div>
         </div>
       </div>
 
