@@ -23,6 +23,8 @@ export interface Plan {
 export interface Welder {
   id?: number;
   name: string;
+  sbActive?: boolean; // СБ toggle for this welder's card
+  vsActive?: boolean; // ВС toggle for this welder's card
   createdAt: Date;
   updatedAt: Date;
 }

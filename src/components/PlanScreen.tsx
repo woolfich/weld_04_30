@@ -50,10 +50,12 @@ export function PlanScreen() {
     return map;
   }, [workEntries]);
 
-  // Sort plans: active first (sorted by updatedAt desc), then completed
+  // Sort plans: active first, newest createdAt on top; completed below, also newest first
   const sortedPlans = useMemo(() => {
-    const active = plans.filter(p => !p.completedAt);
-    const completed = plans.filter(p => p.completedAt);
+    const byCreatedDesc = (a: Plan, b: Plan) =>
+      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    const active = plans.filter(p => !p.completedAt).sort(byCreatedDesc);
+    const completed = plans.filter(p => p.completedAt).sort(byCreatedDesc);
     return [...active, ...completed];
   }, [plans]);
 

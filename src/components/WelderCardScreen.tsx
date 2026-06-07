@@ -23,7 +23,7 @@ interface DayGroup {
 }
 
 export function WelderCardScreen() {
-  const { activeWelderId, setActiveWelderId, setActiveScreen, sbActive, vsActive, toggleSb, toggleVs } = useAppStore();
+  const { activeWelderId, setActiveWelderId, setActiveScreen } = useAppStore();
 
   const [articleInput, setArticleInput] = useState('');
   const [qtyInput, setQtyInput] = useState('');
@@ -47,6 +47,19 @@ export function WelderCardScreen() {
   const norms = useLiveQuery(() => db.norms.toArray(), []) || [];
   const allWorkEntries = useLiveQuery(() => db.workEntries.toArray(), []) || [];
   const welders = useLiveQuery(() => db.welders.toArray(), []) || [];
+
+  const sbActive = welder?.sbActive ?? false;
+  const vsActive = welder?.vsActive ?? false;
+
+  const toggleSb = useCallback(async () => {
+    if (!activeWelderId) return;
+    await db.welders.update(activeWelderId, { sbActive: !sbActive });
+  }, [activeWelderId, sbActive]);
+
+  const toggleVs = useCallback(async () => {
+    if (!activeWelderId) return;
+    await db.welders.update(activeWelderId, { vsActive: !vsActive });
+  }, [activeWelderId, vsActive]);
 
   // Active plan articles for autocomplete
   const activePlanArticles = useMemo(() => {
@@ -481,29 +494,35 @@ export function WelderCardScreen() {
         ) : (
           <div>
             {dayGroups.map((group) => {
-              const isFuture = group.date > getTodayStr();
+              const isSb = group.dayType === 'sb';
+              const isVs = group.dayType === 'vs';
+              const headerBg = isSb
+                ? 'bg-orange-100/90 dark:bg-orange-900/40'
+                : isVs
+                  ? 'bg-red-100/90 dark:bg-red-900/40'
+                  : 'bg-muted/80';
+              const dateTextClass = isSb
+                ? 'text-orange-700 dark:text-orange-300'
+                : isVs
+                  ? 'text-red-700 dark:text-red-300'
+                  : 'text-muted-foreground';
 
               return (
                 <div key={group.date}>
                   {/* Day header */}
-                  <div className={`sticky top-0 z-10 backdrop-blur-sm px-4 py-1.5 flex justify-between items-center ${
-                    isFuture
-                      ? 'bg-blue-50/90 dark:bg-blue-950/60'
-                      : 'bg-muted/80'
-                  }`}>
-                    <span className={`text-xs font-semibold ${isFuture ? 'text-blue-600 dark:text-blue-400' : 'text-muted-foreground'}`}>
+                  <div className={`sticky top-0 z-10 backdrop-blur-sm px-4 py-1.5 flex justify-between items-center ${headerBg}`}>
+                    <span className={`text-xs font-semibold ${dateTextClass}`}>
                       {formatDate(group.date)} ({getShortDayName(group.date)})
-                      {group.dayType === 'sb' && <span className="ml-1 text-orange-600 dark:text-orange-400 font-bold">СБ</span>}
-                      {group.dayType === 'vs' && <span className="ml-1 text-red-600 dark:text-red-400 font-bold">ВС</span>}
-                      {isFuture && <span className="ml-1">📅</span>}
+                      {isSb && <span className="ml-1 font-bold">СБ</span>}
+                      {isVs && <span className="ml-1 font-bold">ВС</span>}
                     </span>
-                    <span className={`text-xs ${isFuture ? 'text-blue-500 dark:text-blue-300' : 'text-muted-foreground'}`}>
+                    <span className={`text-xs ${dateTextClass}`}>
                       {formatQtyShort(group.totalHours)} / {DAILY_HOURS_LIMIT} ч
                     </span>
                   </div>
 
                   {/* Entries for this day */}
-                  <div className={`divide-y divide-border ${isFuture ? 'bg-blue-50/30 dark:bg-blue-950/10' : ''}`}>
+                  <div className="divide-y divide-border">
                     {group.entries.map((entry) => {
                       const norm = norms.find(n => n.article === entry.article);
                       const hours = norm ? calcHours(entry.quantity, norm.timeHours) : 0;

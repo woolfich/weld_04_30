@@ -109,6 +109,8 @@ export function MainScreen() {
 
     await db.welders.add({
       name,
+      sbActive: false,
+      vsActive: false,
       createdAt: new Date(),
       updatedAt: new Date(),
     });

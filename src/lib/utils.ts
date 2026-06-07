@@ -122,11 +122,27 @@ export function calcHours(quantity: number, normHours: number): number {
 }
 
 /**
+ * Compare articles: prefix alphabetically, then numeric suffix ascending
+ * e.g., ХТ4, ХТ13, ХТ44, ХТ77
+ */
+export function compareArticles(a: string, b: string): number {
+  const matchA = a.match(/^([^\d]*)(\d*)$/);
+  const matchB = b.match(/^([^\d]*)(\d*)$/);
+  const prefixA = matchA?.[1] ?? a;
+  const prefixB = matchB?.[1] ?? b;
+  const prefixCmp = prefixA.localeCompare(prefixB, 'ru');
+  if (prefixCmp !== 0) return prefixCmp;
+  const numA = matchA?.[2] ? parseInt(matchA[2], 10) : 0;
+  const numB = matchB?.[2] ? parseInt(matchB[2], 10) : 0;
+  return numA - numB;
+}
+
+/**
  * Sort articles in ascending alphabetical/numerical order
- * e.g., ХТ04, ХТ13, ХТ44, ХТ55
+ * e.g., ХТ4, ХТ13, ХТ44, ХТ77
  */
 export function sortArticles<T extends { article: string }>(items: T[]): T[] {
-  return [...items].sort((a, b) => a.article.localeCompare(b.article, 'ru'));
+  return [...items].sort((a, b) => compareArticles(a.article, b.article));
 }
 
 /**

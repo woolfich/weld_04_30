@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, type Norm } from '@/lib/db';
 import { normalizeArticle, formatQty, sortArticles, forceRefresh } from '@/lib/utils';
@@ -20,7 +20,7 @@ export function NormsScreen() {
   const [, setForceUpdate] = React.useState({});
 
   const norms = useLiveQuery(() => db.norms.toArray(), []) || [];
-  const sortedNorms = norms; // Убираем сортировку
+  const sortedNorms = useMemo(() => sortArticles(norms), [norms]);
 
   // Force refresh when component mounts
   React.useEffect(() => {
