@@ -3,7 +3,7 @@
 import React, { useState, useCallback, useMemo, useRef } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, type Welder, type WorkEntry, type ExportData, type Norm, type Plan } from '@/lib/db';
-import { normalizeArticle, formatQty, formatQtyShort, getTodayStr, calcHours, sortByUpdatedDesc, formatDateShort, dateToStr } from '@/lib/utils';
+import { normalizeArticle, formatQty, formatQtyShort, getTodayStr, calcHours, sortByUpdatedDesc, formatDateShort, dateToStr, roundToHundredths } from '@/lib/utils';
 import { LongPressWrapper } from '@/components/LongPressWrapper';
 import { useAppStore } from '@/lib/store';
 import { Plus, Pencil, Trash2, Info, Download, Upload } from 'lucide-react';
@@ -38,7 +38,7 @@ export function MainScreen() {
     const articleMap = new Map<string, number>();
     for (const entry of todayEntries) {
       const current = articleMap.get(entry.article) || 0;
-      articleMap.set(entry.article, current + entry.quantity);
+      articleMap.set(entry.article, roundToHundredths(current + entry.quantity));
     }
 
     const parts: string[] = [];
@@ -59,9 +59,9 @@ export function MainScreen() {
       const key = `${entry.article}__${entry.planId}`;
       const existing = groupMap.get(key);
       if (existing) {
-        existing.qty += entry.quantity;
+        existing.qty = roundToHundredths(existing.qty + entry.quantity);
       } else {
-        groupMap.set(key, { article: entry.article, qty: entry.quantity, planId: entry.planId });
+        groupMap.set(key, { article: entry.article, qty: roundToHundredths(entry.quantity), planId: entry.planId });
       }
     }
 

@@ -3,7 +3,7 @@
 import React, { useState, useCallback, useMemo } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, type Plan } from '@/lib/db';
-import { normalizeArticle, formatQty, formatQtyShort, calcHours, formatDate, forceRefresh } from '@/lib/utils';
+import { normalizeArticle, formatQty, formatQtyShort, calcHours, formatDate, forceRefresh, roundToHundredths } from '@/lib/utils';
 import { LongPressWrapper } from '@/components/LongPressWrapper';
 import { AutoComplete } from '@/components/AutoComplete';
 import { useAppStore } from '@/lib/store';
@@ -45,7 +45,7 @@ export function PlanScreen() {
     const map = new Map<number, number>();
     for (const entry of workEntries) {
       const current = map.get(entry.planId) || 0;
-      map.set(entry.planId, current + entry.quantity);
+      map.set(entry.planId, roundToHundredths(current + entry.quantity));
     }
     return map;
   }, [workEntries]);
@@ -89,7 +89,7 @@ export function PlanScreen() {
 
     await db.plans.add({
       article,
-      targetQty: Math.round(qty * 100) / 100,
+      targetQty: roundToHundredths(qty),
       createdAt: new Date(),
       completedAt: null,
       updatedAt: new Date(),
@@ -116,7 +116,7 @@ export function PlanScreen() {
     if (isNaN(qty) || qty <= 0) return;
 
     await db.plans.update(editModal.plan.id, {
-      targetQty: Math.round(qty * 100) / 100,
+      targetQty: roundToHundredths(qty),
       updatedAt: new Date(),
     });
 
@@ -153,7 +153,7 @@ export function PlanScreen() {
       const welder = welders.find(w => w.id === entry.welderId);
       if (welder) {
         const current = welderMap.get(welder.name) || 0;
-        welderMap.set(welder.name, current + entry.quantity);
+        welderMap.set(welder.name, roundToHundredths(current + entry.quantity));
       }
     }
     return Array.from(welderMap.entries())

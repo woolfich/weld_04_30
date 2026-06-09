@@ -3,7 +3,7 @@
 import React, { useState, useCallback, useMemo } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, type Norm } from '@/lib/db';
-import { normalizeArticle, formatQty, sortArticles, forceRefresh } from '@/lib/utils';
+import { normalizeArticle, formatQty, sortArticles, forceRefresh, roundToHundredths } from '@/lib/utils';
 import { LongPressWrapper } from '@/components/LongPressWrapper';
 import { Plus, Pencil, Trash2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
@@ -43,7 +43,7 @@ export function NormsScreen() {
 
     await db.norms.add({
       article,
-      timeHours: Math.round(hours * 100) / 100,
+      timeHours: roundToHundredths(hours),
       createdAt: new Date(),
       updatedAt: new Date(),
     });
@@ -70,7 +70,7 @@ export function NormsScreen() {
 
     await db.norms.update(editModal.norm.id, {
       article,
-      timeHours: Math.round(hours * 100) / 100,
+      timeHours: roundToHundredths(hours),
       updatedAt: new Date(),
     });
 

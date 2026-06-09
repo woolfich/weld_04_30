@@ -14,11 +14,20 @@ export function normalizeArticle(input: string): string {
 }
 
 /**
+ * Round to hundredths (2 decimal places), standard half-up rounding
+ * e.g., 1.234 → 1.23, 1.235 → 1.24
+ */
+export function roundToHundredths(n: number): number {
+  if (!Number.isFinite(n)) return 0;
+  return Number(n.toFixed(2));
+}
+
+/**
  * Format a number with 2 decimal places using comma as separator (Russian locale)
  * e.g., 0.5 → "0,50", 1.3 → "1,30"
  */
 export function formatQty(n: number): string {
-  return n.toFixed(2).replace('.', ',');
+  return roundToHundredths(n).toFixed(2).replace('.', ',');
 }
 
 /**
@@ -26,7 +35,7 @@ export function formatQty(n: number): string {
  * e.g., 10.00 → "10", 1.30 → "1,3", 0.50 → "0,5"
  */
 export function formatQtyShort(n: number): string {
-  const fixed = n.toFixed(2).replace('.', ',');
+  const fixed = roundToHundredths(n).toFixed(2).replace('.', ',');
   // Remove trailing zeros after comma, but keep at least one decimal if there are decimals
   return fixed.replace(/,?0+$/, '').replace(/,$/, '') || '0';
 }
@@ -37,7 +46,7 @@ export function formatQtyShort(n: number): string {
 export function parseQty(input: string): number {
   const normalized = input.replace(',', '.').trim();
   const num = parseFloat(normalized);
-  return isNaN(num) ? 0 : Math.round(num * 100) / 100;
+  return isNaN(num) ? 0 : roundToHundredths(num);
 }
 
 /**
@@ -118,7 +127,7 @@ export function getSundayStr(): string {
  * If norm is 10h and quantity is 0.5, then hours = 5h
  */
 export function calcHours(quantity: number, normHours: number): number {
-  return Math.round(quantity * normHours * 100) / 100;
+  return roundToHundredths(quantity * normHours);
 }
 
 /**

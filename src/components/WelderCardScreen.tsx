@@ -5,7 +5,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db, type WorkEntry, type Plan, type Norm } from '@/lib/db';
 import {
   normalizeArticle, formatQty, formatQtyShort, getTodayStr, getSaturdayStr, getSundayStr,
-  calcHours, formatDate, getShortDayName, parseQty,
+  calcHours, formatDate, getShortDayName, parseQty, roundToHundredths,
   DAILY_HOURS_LIMIT, addDays, getNextWorkday, getDayTypeForDate, isWeekend
 } from '@/lib/utils';
 import { LongPressWrapper } from '@/components/LongPressWrapper';
@@ -77,14 +77,14 @@ export function WelderCardScreen() {
     if (!activePlan) return 'Нет активного плана';
 
     const planEntries = allWorkEntries.filter(e => e.planId === activePlan.id);
-    const completedQty = planEntries.reduce((sum, e) => sum + e.quantity, 0);
+    const completedQty = roundToHundredths(planEntries.reduce((sum, e) => sum + e.quantity, 0));
 
     const welderMap = new Map<string, number>();
     for (const entry of planEntries) {
       const w = welders.find(w2 => w2.id === entry.welderId);
       if (w) {
         const current = welderMap.get(w.name) || 0;
-        welderMap.set(w.name, current + entry.quantity);
+        welderMap.set(w.name, roundToHundredths(current + entry.quantity));
       }
     }
 
@@ -105,7 +105,7 @@ export function WelderCardScreen() {
         totalHours += calcHours(entry.quantity, norm.timeHours);
       }
     }
-    return Math.round(totalHours * 100) / 100;
+    return roundToHundredths(totalHours);
   }, [workEntries, norms]);
 
   const handleArticleSelect = useCallback((article: string) => {
@@ -153,7 +153,7 @@ export function WelderCardScreen() {
 
     // Check if plan is already completed
     const planEntries = allWorkEntries.filter(e => e.planId === activePlan.id);
-    const completedQty = planEntries.reduce((sum, e) => sum + e.quantity, 0);
+    const completedQty = roundToHundredths(planEntries.reduce((sum, e) => sum + e.quantity, 0));
     if (completedQty >= activePlan.targetQty) {
       setPlanCompleteMsg(`План для ${article} выполнен!`);
       return;
@@ -164,7 +164,7 @@ export function WelderCardScreen() {
 
     // Calculate total hours for this work
     const totalHours = calcHours(qty, norm.timeHours);
-    let remainingHours = Math.round(totalHours * 100) / 100;
+    let remainingHours = roundToHundredths(totalHours);
 
     // === Step 1: Generate initial date sequence ===
     const initialDates: { date: string; dayType: 'workday' | 'sb' | 'vs' }[] = [];
@@ -195,8 +195,8 @@ export function WelderCardScreen() {
 
       if (availableHours <= 0) continue;
 
-      const allocatedHours = Math.min(availableHours, remainingHours);
-      const allocatedQty = Math.round((allocatedHours / norm.timeHours) * 100) / 100;
+      const allocatedHours = roundToHundredths(Math.min(availableHours, remainingHours));
+      const allocatedQty = roundToHundredths(allocatedHours / norm.timeHours);
 
       // Find existing entry for this article on this date in this plan with same dayType
       const existingEntry = workEntries.find(
@@ -204,7 +204,7 @@ export function WelderCardScreen() {
       );
 
       if (existingEntry && existingEntry.id) {
-        const newQty = Math.round((existingEntry.quantity + allocatedQty) * 100) / 100;
+        const newQty = roundToHundredths(existingEntry.quantity + allocatedQty);
         await db.workEntries.update(existingEntry.id, {
           quantity: newQty,
           updatedAt: new Date(),
@@ -222,7 +222,7 @@ export function WelderCardScreen() {
         });
       }
 
-      remainingHours = Math.round((remainingHours - allocatedHours) * 100) / 100;
+      remainingHours = roundToHundredths(remainingHours - allocatedHours);
     }
 
     // === Step 3: Overflow to future workdays ===
@@ -237,8 +237,8 @@ export function WelderCardScreen() {
         const availableHours = Math.max(0, DAILY_HOURS_LIMIT - existingHours);
 
         if (availableHours > 0) {
-          const allocatedHours = Math.min(availableHours, remainingHours);
-          const allocatedQty = Math.round((allocatedHours / norm.timeHours) * 100) / 100;
+          const allocatedHours = roundToHundredths(Math.min(availableHours, remainingHours));
+          const allocatedQty = roundToHundredths(allocatedHours / norm.timeHours);
           const dayType = getDayTypeForDate(currentDate);
 
           // Check for existing entry of same article on this date
@@ -247,7 +247,7 @@ export function WelderCardScreen() {
           );
 
           if (existingEntry && existingEntry.id) {
-            const newQty = Math.round((existingEntry.quantity + allocatedQty) * 100) / 100;
+            const newQty = roundToHundredths(existingEntry.quantity + allocatedQty);
             await db.workEntries.update(existingEntry.id, {
               quantity: newQty,
               updatedAt: new Date(),
@@ -265,7 +265,7 @@ export function WelderCardScreen() {
             });
           }
 
-          remainingHours = Math.round((remainingHours - allocatedHours) * 100) / 100;
+          remainingHours = roundToHundredths(remainingHours - allocatedHours);
         }
 
         currentDate = getNextWorkday(currentDate);
@@ -278,7 +278,7 @@ export function WelderCardScreen() {
 
     // Update plan completion
     const updatedPlanEntries = await db.workEntries.where('planId').equals(activePlan.id!).toArray();
-    const newCompletedQty = updatedPlanEntries.reduce((sum, e) => sum + e.quantity, 0);
+    const newCompletedQty = roundToHundredths(updatedPlanEntries.reduce((sum, e) => sum + e.quantity, 0));
     if (newCompletedQty >= activePlan.targetQty && !activePlan.completedAt) {
       await db.plans.update(activePlan.id!, {
         completedAt: new Date(),
@@ -309,7 +309,7 @@ export function WelderCardScreen() {
       const plan = await db.plans.get(entry.planId);
       if (plan) {
         const planEntries = await db.workEntries.where('planId').equals(entry.planId).toArray();
-        const completedQty = planEntries.reduce((sum, e) => sum + e.quantity, 0);
+        const completedQty = roundToHundredths(planEntries.reduce((sum, e) => sum + e.quantity, 0));
         if (completedQty < plan.targetQty && plan.completedAt) {
           await db.plans.update(entry.planId, {
             completedAt: null,
@@ -340,7 +340,7 @@ export function WelderCardScreen() {
     const plan = await db.plans.get(planId);
     if (plan) {
       const planEntries = await db.workEntries.where('planId').equals(planId).toArray();
-      const completedQty = planEntries.reduce((sum, e) => sum + e.quantity, 0);
+      const completedQty = roundToHundredths(planEntries.reduce((sum, e) => sum + e.quantity, 0));
       if (completedQty >= plan.targetQty && !plan.completedAt) {
         await db.plans.update(planId, {
           completedAt: new Date(),
@@ -384,7 +384,7 @@ export function WelderCardScreen() {
     // Sort entries within each day by updatedAt desc
     for (const group of groupMap.values()) {
       group.entries.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
-      group.totalHours = Math.round(group.totalHours * 100) / 100;
+      group.totalHours = roundToHundredths(group.totalHours);
     }
 
     // Sort days by date desc (most recent/future first)
