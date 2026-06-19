@@ -1,47 +1,125 @@
-'use client';
+"use client";
 
-import React, { useState, useCallback, useMemo } from 'react';
-import { useLiveQuery } from 'dexie-react-hooks';
-import { db, type WorkEntry, type Plan, type Norm } from '@/lib/db';
+import React, { useState, useCallback, useMemo } from "react";
+import { useLiveQuery } from "dexie-react-hooks";
+import { db, type WorkEntry, type Plan } from "@/lib/db";
 import {
-  normalizeArticle, formatQty, formatQtyShort, getTodayStr, getSaturdayStr, getSundayStr,
-  calcHours, formatDate, getShortDayName, parseQty, roundToHundredths,
-  DAILY_HOURS_LIMIT, addDays, getNextWorkday, getDayTypeForDate, isWeekend
-} from '@/lib/utils';
-import { LongPressWrapper } from '@/components/LongPressWrapper';
-import { AutoComplete } from '@/components/AutoComplete';
-import { useAppStore } from '@/lib/store';
-import { Plus, Pencil, Trash2, ArrowLeft } from 'lucide-react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
+  normalizeArticle,
+  formatQtyShort,
+  getTodayStr,
+  getSaturdayStr,
+  getSundayStr,
+  calcHours,
+  formatDate,
+  getShortDayName,
+  parseQty,
+  roundToHundredths,
+  DAILY_HOURS_LIMIT,
+  getNextWorkday,
+  getDayTypeForDate,
+  isWeekend,
+} from "@/lib/utils";
+import { LongPressWrapper } from "@/components/LongPressWrapper";
+import { AutoComplete } from "@/components/AutoComplete";
+import { useAppStore } from "@/lib/store";
+import { Plus, Pencil, Trash2, ArrowLeft } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+
+interface DisplayEntry extends WorkEntry {
+  normHours?: number;
+  timelineKey: string;
+  timelineColorResolved: string;
+  timelineLaneIndex: number;
+  isTimelineStart: boolean;
+  isTimelineEnd: boolean;
+}
 
 interface DayGroup {
   date: string;
-  dayType: 'workday' | 'sb' | 'vs';
-  entries: (WorkEntry & { normHours?: number })[];
+  dayType: "workday" | "sb" | "vs";
+  entries: DisplayEntry[];
   totalHours: number;
+  headerActiveTimelineKeys: string[];
+}
+
+const LEGACY_TIMELINE_BUCKET_MS = 1000;
+const TIMELINE_LEFT_WIDTH = "30%";
+const TIMELINE_LINE_WIDTH = 3;
+
+function generateRandomTimelineColor(): string {
+  const hue = Math.floor(Math.random() * 360);
+  const saturation = 65 + Math.floor(Math.random() * 20);
+  const lightness = 45 + Math.floor(Math.random() * 10);
+  return `hsl(${hue} ${saturation}% ${lightness}%)`;
+}
+
+function getStableColorFromSeed(seed: string): string {
+  let hash = 0;
+  for (let i = 0; i < seed.length; i++) {
+    hash = (hash * 31 + seed.charCodeAt(i)) | 0;
+  }
+  const hue = Math.abs(hash) % 360;
+  return `hsl(${hue} 72% 52%)`;
+}
+
+function getTimelineKey(entry: WorkEntry): string {
+  if (entry.timelineId) return entry.timelineId;
+
+  const createdAtMs = new Date(entry.createdAt).getTime();
+  const bucket = Number.isFinite(createdAtMs)
+    ? Math.floor(createdAtMs / LEGACY_TIMELINE_BUCKET_MS)
+    : 0;
+
+  return `legacy-${entry.welderId}-${entry.planId}-${entry.article}-${bucket}`;
+}
+
+function getTimelineColor(entry: WorkEntry): string {
+  return entry.timelineColor || getStableColorFromSeed(getTimelineKey(entry));
+}
+
+function getTimelineLanePercent(laneIndex: number, laneCount: number): number {
+  if (laneCount <= 1) return 50;
+  const sidePadding = 14;
+  return (
+    sidePadding +
+    (laneIndex * (100 - sidePadding * 2)) / Math.max(laneCount - 1, 1)
+  );
 }
 
 export function WelderCardScreen() {
   const { activeWelderId, setActiveWelderId, setActiveScreen } = useAppStore();
 
-  const [articleInput, setArticleInput] = useState('');
-  const [qtyInput, setQtyInput] = useState('');
-  const [selectedArticle, setSelectedArticle] = useState('');
+  const [articleInput, setArticleInput] = useState("");
+  const [qtyInput, setQtyInput] = useState("");
+  const [selectedArticle, setSelectedArticle] = useState("");
   const [showArticleInfo, setShowArticleInfo] = useState(false);
-  const [editModal, setEditModal] = useState<{ open: boolean; entry: WorkEntry | null }>({ open: false, entry: null });
-  const [editQty, setEditQty] = useState('');
-  const [planCompleteMsg, setPlanCompleteMsg] = useState('');
+  const [editModal, setEditModal] = useState<{
+    open: boolean;
+    entry: WorkEntry | null;
+  }>({ open: false, entry: null });
+  const [editQty, setEditQty] = useState("");
+  const [planCompleteMsg, setPlanCompleteMsg] = useState("");
 
   const welder = useLiveQuery(
-    () => activeWelderId ? db.welders.get(activeWelderId) : undefined,
-    [activeWelderId]
+    () => (activeWelderId ? db.welders.get(activeWelderId) : undefined),
+    [activeWelderId],
   );
 
-  const workEntries = useLiveQuery(
-    () => activeWelderId ? db.workEntries.where('welderId').equals(activeWelderId).toArray() : [],
-    [activeWelderId]
-  ) || [];
+  const workEntries =
+    useLiveQuery(
+      () =>
+        activeWelderId
+          ? db.workEntries.where("welderId").equals(activeWelderId).toArray()
+          : [],
+      [activeWelderId],
+    ) || [];
 
   const plans = useLiveQuery(() => db.plans.toArray(), []) || [];
   const norms = useLiveQuery(() => db.norms.toArray(), []) || [];
@@ -63,64 +141,79 @@ export function WelderCardScreen() {
 
   // Active plan articles for autocomplete
   const activePlanArticles = useMemo(() => {
-    return [...new Set(plans.filter(p => !p.completedAt).map(p => p.article))];
+    return [
+      ...new Set(plans.filter((p) => !p.completedAt).map((p) => p.article)),
+    ];
   }, [plans]);
 
   // Get active plan for an article
-  const getActivePlan = useCallback((article: string): Plan | undefined => {
-    return plans.find(p => p.article === article && !p.completedAt);
-  }, [plans]);
+  const getActivePlan = useCallback(
+    (article: string): Plan | undefined => {
+      return plans.find((p) => p.article === article && !p.completedAt);
+    },
+    [plans],
+  );
 
   // Get article info hint
-  const getArticleHint = useCallback((article: string): string => {
-    const activePlan = getActivePlan(article);
-    if (!activePlan) return 'Нет активного плана';
+  const getArticleHint = useCallback(
+    (article: string): string => {
+      const activePlan = getActivePlan(article);
+      if (!activePlan) return "Нет активного плана";
 
-    const planEntries = allWorkEntries.filter(e => e.planId === activePlan.id);
-    const completedQty = roundToHundredths(planEntries.reduce((sum, e) => sum + e.quantity, 0));
+      const planEntries = allWorkEntries.filter(
+        (e) => e.planId === activePlan.id,
+      );
+      const completedQty = roundToHundredths(
+        planEntries.reduce((sum, e) => sum + e.quantity, 0),
+      );
 
-    const welderMap = new Map<string, number>();
-    for (const entry of planEntries) {
-      const w = welders.find(w2 => w2.id === entry.welderId);
-      if (w) {
-        const current = welderMap.get(w.name) || 0;
-        welderMap.set(w.name, roundToHundredths(current + entry.quantity));
+      const welderMap = new Map<string, number>();
+      for (const entry of planEntries) {
+        const w = welders.find((w2) => w2.id === entry.welderId);
+        if (w) {
+          const current = welderMap.get(w.name) || 0;
+          welderMap.set(w.name, roundToHundredths(current + entry.quantity));
+        }
       }
-    }
 
-    const welderInfo = Array.from(welderMap.entries())
-      .map(([name, qty]) => `${name}: ${formatQtyShort(qty)} шт`)
-      .join('; ');
+      const welderInfo = Array.from(welderMap.entries())
+        .map(([name, qty]) => `${name}: ${formatQtyShort(qty)} шт`)
+        .join("; ");
 
-    return `План: ${formatQtyShort(activePlan.targetQty)} шт, Выполнено: ${formatQtyShort(completedQty)} шт${welderInfo ? ' | ' + welderInfo : ''}`;
-  }, [plans, allWorkEntries, welders, getActivePlan]);
+      return `План: ${formatQtyShort(activePlan.targetQty)} шт, Выполнено: ${formatQtyShort(completedQty)} шт${welderInfo ? " | " + welderInfo : ""}`;
+    },
+    [plans, allWorkEntries, welders, getActivePlan],
+  );
 
   // Calculate existing hours for this welder on a given date
-  const getExistingHoursForDate = useCallback((date: string): number => {
-    const dayEntries = workEntries.filter(e => e.date === date);
-    let totalHours = 0;
-    for (const entry of dayEntries) {
-      const norm = norms.find(n => n.article === entry.article);
-      if (norm) {
-        totalHours += calcHours(entry.quantity, norm.timeHours);
+  const getExistingHoursForDate = useCallback(
+    (date: string): number => {
+      const dayEntries = workEntries.filter((e) => e.date === date);
+      let totalHours = 0;
+      for (const entry of dayEntries) {
+        const norm = norms.find((n) => n.article === entry.article);
+        if (norm) {
+          totalHours += calcHours(entry.quantity, norm.timeHours);
+        }
       }
-    }
-    return roundToHundredths(totalHours);
-  }, [workEntries, norms]);
+      return roundToHundredths(totalHours);
+    },
+    [workEntries, norms],
+  );
 
   const handleArticleSelect = useCallback((article: string) => {
     const normalized = normalizeArticle(article);
     setArticleInput(normalized);
     setSelectedArticle(normalized);
     setShowArticleInfo(true);
-    setPlanCompleteMsg('');
+    setPlanCompleteMsg("");
   }, []);
 
   const handleArticleChange = useCallback((value: string) => {
     setArticleInput(value);
-    setSelectedArticle('');
+    setSelectedArticle("");
     setShowArticleInfo(false);
-    setPlanCompleteMsg('');
+    setPlanCompleteMsg("");
   }, []);
 
   // Handle tapping an existing entry to autofill input
@@ -129,7 +222,7 @@ export function WelderCardScreen() {
     setArticleInput(normalized);
     setSelectedArticle(normalized);
     setShowArticleInfo(true);
-    setPlanCompleteMsg('');
+    setPlanCompleteMsg("");
   }, []);
 
   /**
@@ -147,42 +240,51 @@ export function WelderCardScreen() {
 
     const activePlan = getActivePlan(article);
     if (!activePlan) {
-      setPlanCompleteMsg('Нет активного плана для этого артикула');
+      setPlanCompleteMsg("Нет активного плана для этого артикула");
       return;
     }
 
     // Check if plan is already completed
-    const planEntries = allWorkEntries.filter(e => e.planId === activePlan.id);
-    const completedQty = roundToHundredths(planEntries.reduce((sum, e) => sum + e.quantity, 0));
+    const planEntries = allWorkEntries.filter(
+      (e) => e.planId === activePlan.id,
+    );
+    const completedQty = roundToHundredths(
+      planEntries.reduce((sum, e) => sum + e.quantity, 0),
+    );
     if (completedQty >= activePlan.targetQty) {
       setPlanCompleteMsg(`План для ${article} выполнен!`);
       return;
     }
 
-    const norm = norms.find(n => n.article === article);
+    const norm = norms.find((n) => n.article === article);
     if (!norm) return;
+
+    const timelineId = crypto.randomUUID();
+    const timelineColor = generateRandomTimelineColor();
+    const batchTimestamp = new Date();
 
     // Calculate total hours for this work
     const totalHours = calcHours(qty, norm.timeHours);
     let remainingHours = roundToHundredths(totalHours);
 
     // === Step 1: Generate initial date sequence ===
-    const initialDates: { date: string; dayType: 'workday' | 'sb' | 'vs' }[] = [];
+    const initialDates: { date: string; dayType: "workday" | "sb" | "vs" }[] =
+      [];
 
     if (sbActive) {
-      initialDates.push({ date: getSaturdayStr(), dayType: 'sb' });
+      initialDates.push({ date: getSaturdayStr(), dayType: "sb" });
     }
     if (vsActive) {
-      initialDates.push({ date: getSundayStr(), dayType: 'vs' });
+      initialDates.push({ date: getSundayStr(), dayType: "vs" });
     }
     if (!sbActive && !vsActive) {
       // Normal workday - start from today
       const today = getTodayStr();
       if (isWeekend(today)) {
         // Weekend without СБ/ВС - start from next Monday
-        initialDates.push({ date: getNextWorkday(today), dayType: 'workday' });
+        initialDates.push({ date: getNextWorkday(today), dayType: "workday" });
       } else {
-        initialDates.push({ date: today, dayType: 'workday' });
+        initialDates.push({ date: today, dayType: "workday" });
       }
     }
 
@@ -195,39 +297,33 @@ export function WelderCardScreen() {
 
       if (availableHours <= 0) continue;
 
-      const allocatedHours = roundToHundredths(Math.min(availableHours, remainingHours));
+      const allocatedHours = roundToHundredths(
+        Math.min(availableHours, remainingHours),
+      );
       const allocatedQty = roundToHundredths(allocatedHours / norm.timeHours);
 
-      // Find existing entry for this article on this date in this plan with same dayType
-      const existingEntry = workEntries.find(
-        e => e.article === article && e.planId === activePlan.id && e.date === dateInfo.date && e.dayType === dateInfo.dayType
-      );
-
-      if (existingEntry && existingEntry.id) {
-        const newQty = roundToHundredths(existingEntry.quantity + allocatedQty);
-        await db.workEntries.update(existingEntry.id, {
-          quantity: newQty,
-          updatedAt: new Date(),
-        });
-      } else {
-        await db.workEntries.add({
-          welderId: activeWelderId,
-          planId: activePlan.id!,
-          article,
-          quantity: allocatedQty,
-          date: dateInfo.date,
-          dayType: dateInfo.dayType,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        });
-      }
+      await db.workEntries.add({
+        welderId: activeWelderId,
+        planId: activePlan.id!,
+        article,
+        quantity: allocatedQty,
+        date: dateInfo.date,
+        dayType: dateInfo.dayType,
+        timelineId,
+        timelineColor,
+        createdAt: batchTimestamp,
+        updatedAt: batchTimestamp,
+      });
 
       remainingHours = roundToHundredths(remainingHours - allocatedHours);
     }
 
     // === Step 3: Overflow to future workdays ===
     if (remainingHours > 0.001) {
-      const lastInitialDate = initialDates.length > 0 ? initialDates[initialDates.length - 1].date : getTodayStr();
+      const lastInitialDate =
+        initialDates.length > 0
+          ? initialDates[initialDates.length - 1].date
+          : getTodayStr();
       let currentDate = getNextWorkday(lastInitialDate);
       let safetyCounter = 0;
       const MAX_DAYS = 100;
@@ -237,33 +333,26 @@ export function WelderCardScreen() {
         const availableHours = Math.max(0, DAILY_HOURS_LIMIT - existingHours);
 
         if (availableHours > 0) {
-          const allocatedHours = roundToHundredths(Math.min(availableHours, remainingHours));
-          const allocatedQty = roundToHundredths(allocatedHours / norm.timeHours);
+          const allocatedHours = roundToHundredths(
+            Math.min(availableHours, remainingHours),
+          );
+          const allocatedQty = roundToHundredths(
+            allocatedHours / norm.timeHours,
+          );
           const dayType = getDayTypeForDate(currentDate);
 
-          // Check for existing entry of same article on this date
-          const existingEntry = workEntries.find(
-            e => e.article === article && e.planId === activePlan.id && e.date === currentDate && e.dayType === dayType
-          );
-
-          if (existingEntry && existingEntry.id) {
-            const newQty = roundToHundredths(existingEntry.quantity + allocatedQty);
-            await db.workEntries.update(existingEntry.id, {
-              quantity: newQty,
-              updatedAt: new Date(),
-            });
-          } else {
-            await db.workEntries.add({
-              welderId: activeWelderId,
-              planId: activePlan.id!,
-              article,
-              quantity: allocatedQty,
-              date: currentDate,
-              dayType,
-              createdAt: new Date(),
-              updatedAt: new Date(),
-            });
-          }
+          await db.workEntries.add({
+            welderId: activeWelderId,
+            planId: activePlan.id!,
+            article,
+            quantity: allocatedQty,
+            date: currentDate,
+            dayType,
+            timelineId,
+            timelineColor,
+            createdAt: batchTimestamp,
+            updatedAt: batchTimestamp,
+          });
 
           remainingHours = roundToHundredths(remainingHours - allocatedHours);
         }
@@ -277,8 +366,13 @@ export function WelderCardScreen() {
     await db.welders.update(activeWelderId, { updatedAt: new Date() });
 
     // Update plan completion
-    const updatedPlanEntries = await db.workEntries.where('planId').equals(activePlan.id!).toArray();
-    const newCompletedQty = roundToHundredths(updatedPlanEntries.reduce((sum, e) => sum + e.quantity, 0));
+    const updatedPlanEntries = await db.workEntries
+      .where("planId")
+      .equals(activePlan.id!)
+      .toArray();
+    const newCompletedQty = roundToHundredths(
+      updatedPlanEntries.reduce((sum, e) => sum + e.quantity, 0),
+    );
     if (newCompletedQty >= activePlan.targetQty && !activePlan.completedAt) {
       await db.plans.update(activePlan.id!, {
         completedAt: new Date(),
@@ -291,12 +385,24 @@ export function WelderCardScreen() {
     }
 
     // Reset form
-    setArticleInput('');
-    setQtyInput('');
-    setSelectedArticle('');
+    setArticleInput("");
+    setQtyInput("");
+    setSelectedArticle("");
     setShowArticleInfo(false);
-    setPlanCompleteMsg('');
-  }, [activeWelderId, articleInput, qtyInput, selectedArticle, sbActive, vsActive, workEntries, allWorkEntries, norms, getActivePlan, getExistingHoursForDate]);
+    setPlanCompleteMsg("");
+  }, [
+    activeWelderId,
+    articleInput,
+    qtyInput,
+    selectedArticle,
+    sbActive,
+    vsActive,
+    workEntries,
+    allWorkEntries,
+    norms,
+    getActivePlan,
+    getExistingHoursForDate,
+  ]);
 
   const handleDelete = useCallback(async (id: number) => {
     const entry = await db.workEntries.get(id);
@@ -308,8 +414,13 @@ export function WelderCardScreen() {
     if (entry.planId) {
       const plan = await db.plans.get(entry.planId);
       if (plan) {
-        const planEntries = await db.workEntries.where('planId').equals(entry.planId).toArray();
-        const completedQty = roundToHundredths(planEntries.reduce((sum, e) => sum + e.quantity, 0));
+        const planEntries = await db.workEntries
+          .where("planId")
+          .equals(entry.planId)
+          .toArray();
+        const completedQty = roundToHundredths(
+          planEntries.reduce((sum, e) => sum + e.quantity, 0),
+        );
         if (completedQty < plan.targetQty && plan.completedAt) {
           await db.plans.update(entry.planId, {
             completedAt: null,
@@ -339,8 +450,13 @@ export function WelderCardScreen() {
     const planId = editModal.entry.planId;
     const plan = await db.plans.get(planId);
     if (plan) {
-      const planEntries = await db.workEntries.where('planId').equals(planId).toArray();
-      const completedQty = roundToHundredths(planEntries.reduce((sum, e) => sum + e.quantity, 0));
+      const planEntries = await db.workEntries
+        .where("planId")
+        .equals(planId)
+        .toArray();
+      const completedQty = roundToHundredths(
+        planEntries.reduce((sum, e) => sum + e.quantity, 0),
+      );
       if (completedQty >= plan.targetQty && !plan.completedAt) {
         await db.plans.update(planId, {
           completedAt: new Date(),
@@ -369,31 +485,101 @@ export function WelderCardScreen() {
           dayType: entry.dayType,
           entries: [],
           totalHours: 0,
+          headerActiveTimelineKeys: [],
         });
       }
 
       const group = groupMap.get(dateKey)!;
-      const norm = norms.find(n => n.article === entry.article);
+      const norm = norms.find((n) => n.article === entry.article);
       const normHours = norm?.timeHours || 0;
       const hours = calcHours(entry.quantity, normHours);
 
-      group.entries.push({ ...entry, normHours });
+      group.entries.push({
+        ...entry,
+        normHours,
+        timelineKey: getTimelineKey(entry),
+        timelineColorResolved: getTimelineColor(entry),
+        timelineLaneIndex: 0,
+        isTimelineStart: false,
+        isTimelineEnd: false,
+      });
       group.totalHours += hours;
     }
 
-    // Sort entries within each day by updatedAt desc
     for (const group of groupMap.values()) {
-      group.entries.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+      group.entries.sort(
+        (a, b) =>
+          new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+      );
       group.totalHours = roundToHundredths(group.totalHours);
     }
 
-    // Sort days by date desc (most recent/future first)
-    return Array.from(groupMap.values()).sort((a, b) => b.date.localeCompare(a.date));
+    const sortedGroups = Array.from(groupMap.values()).sort((a, b) =>
+      b.date.localeCompare(a.date),
+    );
+    const flatEntries = sortedGroups.flatMap((group) => group.entries);
+    const timelineLaneMap = new Map<string, number>();
+    const timelineIndexMap = new Map<string, number[]>();
+
+    flatEntries.forEach((entry, index) => {
+      if (!timelineLaneMap.has(entry.timelineKey)) {
+        timelineLaneMap.set(entry.timelineKey, timelineLaneMap.size);
+      }
+      const indexes = timelineIndexMap.get(entry.timelineKey) || [];
+      indexes.push(index);
+      timelineIndexMap.set(entry.timelineKey, indexes);
+    });
+
+    flatEntries.forEach((entry, index) => {
+      const indexes = timelineIndexMap.get(entry.timelineKey) || [];
+      entry.timelineLaneIndex = timelineLaneMap.get(entry.timelineKey) || 0;
+      entry.isTimelineStart = index === indexes[0];
+      entry.isTimelineEnd = index === indexes[indexes.length - 1];
+    });
+
+    let currentStartIndex = 0;
+    for (const group of sortedGroups) {
+      group.headerActiveTimelineKeys = Array.from(timelineIndexMap.entries())
+        .filter(
+          ([, indexes]) =>
+            indexes[0] < currentStartIndex &&
+            indexes[indexes.length - 1] >= currentStartIndex,
+        )
+        .map(([timelineKey]) => timelineKey);
+      currentStartIndex += group.entries.length;
+    }
+
+    return sortedGroups;
   }, [workEntries, norms]);
+
+  const totalTimelineCount = useMemo(() => {
+    const keys = new Set<string>();
+    for (const group of dayGroups) {
+      for (const entry of group.entries) {
+        keys.add(entry.timelineKey);
+      }
+    }
+    return Math.max(keys.size, 1);
+  }, [dayGroups]);
+
+  const timelineMeta = useMemo(() => {
+    const meta = new Map<string, { color: string; laneIndex: number }>();
+    for (const group of dayGroups) {
+      for (const entry of group.entries) {
+        if (!meta.has(entry.timelineKey)) {
+          meta.set(entry.timelineKey, {
+            color: entry.timelineColorResolved,
+            laneIndex: entry.timelineLaneIndex,
+          });
+        }
+      }
+    }
+    return meta;
+  }, [dayGroups]);
 
   const handleBack = useCallback(() => {
     setActiveWelderId(null);
-    setActiveScreen('main');
+    setActiveScreen("main");
   }, [setActiveWelderId, setActiveScreen]);
 
   if (!welder) {
@@ -404,36 +590,40 @@ export function WelderCardScreen() {
     );
   }
 
-  const currentArticleHint = selectedArticle ? getArticleHint(selectedArticle) : '';
+  const currentArticleHint = selectedArticle
+    ? getArticleHint(selectedArticle)
+    : "";
 
   return (
     <div className="flex flex-col h-full">
       {/* Header with welder name and СБ/ВС */}
-      <div className="flex-shrink-0 bg-card border-b border-border px-3 py-2">
+      <div className="shrink-0 bg-card border-b border-border px-3 py-2">
         <div className="flex items-center gap-2 mb-2">
           <button
             onClick={handleBack}
-            className="flex-shrink-0 p-1.5 text-foreground active:bg-accent rounded-full"
+            className="shrink-0 p-1.5 text-foreground active:bg-accent rounded-full"
           >
             <ArrowLeft className="w-5 h-5" />
           </button>
-          <span className="font-semibold text-base flex-1 truncate">{welder.name}</span>
+          <span className="font-semibold text-base flex-1 truncate">
+            {welder.name}
+          </span>
           <button
             onClick={toggleSb}
-            className={`flex-shrink-0 px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${
+            className={`shrink-0 px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${
               sbActive
-                ? 'bg-orange-100 dark:bg-orange-900/40 border-orange-300 dark:border-orange-700 text-orange-700 dark:text-orange-300'
-                : 'border-border text-muted-foreground'
+                ? "bg-orange-100 dark:bg-orange-900/40 border-orange-300 dark:border-orange-700 text-orange-700 dark:text-orange-300"
+                : "border-border text-muted-foreground"
             }`}
           >
             СБ
           </button>
           <button
             onClick={toggleVs}
-            className={`flex-shrink-0 px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${
+            className={`shrink-0 px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${
               vsActive
-                ? 'bg-red-100 dark:bg-red-900/40 border-red-300 dark:border-red-700 text-red-700 dark:text-red-300'
-                : 'border-border text-muted-foreground'
+                ? "bg-red-100 dark:bg-red-900/40 border-red-300 dark:border-red-700 text-red-700 dark:text-red-300"
+                : "border-border text-muted-foreground"
             }`}
           >
             ВС
@@ -455,16 +645,21 @@ export function WelderCardScreen() {
             <input
               type="text"
               value={qtyInput}
-              onChange={(e) => { setQtyInput(e.target.value); setPlanCompleteMsg(''); }}
+              onChange={(e) => {
+                setQtyInput(e.target.value);
+                setPlanCompleteMsg("");
+              }}
               placeholder="шт"
               className="w-20 px-3 py-2 text-sm border border-border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring text-right"
               inputMode="decimal"
-              onKeyDown={(e) => { if (e.key === 'Enter') handleAdd(); }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleAdd();
+              }}
             />
           </div>
           <button
             onClick={handleAdd}
-            className="flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-lg bg-primary text-primary-foreground active:opacity-80"
+            className="shrink-0 w-10 h-10 flex items-center justify-center rounded-lg bg-primary text-primary-foreground active:opacity-80"
           >
             <Plus className="w-5 h-5" />
           </button>
@@ -494,38 +689,74 @@ export function WelderCardScreen() {
         ) : (
           <div>
             {dayGroups.map((group) => {
-              const isSb = group.dayType === 'sb';
-              const isVs = group.dayType === 'vs';
+              const isSb = group.dayType === "sb";
+              const isVs = group.dayType === "vs";
               const headerBg = isSb
-                ? 'bg-orange-100/90 dark:bg-orange-900/40'
+                ? "bg-orange-100/90 dark:bg-orange-900/40"
                 : isVs
-                  ? 'bg-red-100/90 dark:bg-red-900/40'
-                  : 'bg-muted/80';
+                  ? "bg-red-100/90 dark:bg-red-900/40"
+                  : "bg-muted/80";
               const dateTextClass = isSb
-                ? 'text-orange-700 dark:text-orange-300'
+                ? "text-orange-700 dark:text-orange-300"
                 : isVs
-                  ? 'text-red-700 dark:text-red-300'
-                  : 'text-muted-foreground';
+                  ? "text-red-700 dark:text-red-300"
+                  : "text-muted-foreground";
 
               return (
                 <div key={group.date}>
                   {/* Day header */}
-                  <div className={`sticky top-0 z-10 backdrop-blur-sm px-4 py-1.5 flex justify-between items-center ${headerBg}`}>
-                    <span className={`text-xs font-semibold ${dateTextClass}`}>
-                      {formatDate(group.date)} ({getShortDayName(group.date)})
-                      {isSb && <span className="ml-1 font-bold">СБ</span>}
-                      {isVs && <span className="ml-1 font-bold">ВС</span>}
-                    </span>
-                    <span className={`text-xs ${dateTextClass}`}>
-                      {formatQtyShort(group.totalHours)} / {DAILY_HOURS_LIMIT} ч
-                    </span>
+                  <div
+                    className={`sticky top-0 z-10 backdrop-blur-sm ${headerBg}`}
+                  >
+                    <div className="flex items-stretch">
+                      <div
+                        className="relative shrink-0"
+                        style={{ width: TIMELINE_LEFT_WIDTH }}
+                      >
+                        {group.headerActiveTimelineKeys.map((timelineKey) => {
+                          const meta = timelineMeta.get(timelineKey);
+                          if (!meta) return null;
+
+                          return (
+                            <div
+                              key={timelineKey}
+                              className="absolute inset-y-0 -translate-x-1/2 rounded-full opacity-80"
+                              style={{
+                                left: `${getTimelineLanePercent(meta.laneIndex, totalTimelineCount)}%`,
+                                width: `${TIMELINE_LINE_WIDTH}px`,
+                                backgroundColor: meta.color,
+                              }}
+                            />
+                          );
+                        })}
+                      </div>
+                      <div className="flex-1 min-w-0 px-4 py-1.5 flex justify-between items-center gap-3">
+                        <span
+                          className={`text-xs font-semibold ${dateTextClass}`}
+                        >
+                          {formatDate(group.date)} (
+                          {getShortDayName(group.date)})
+                          {isSb && <span className="ml-1 font-bold">СБ</span>}
+                          {isVs && <span className="ml-1 font-bold">ВС</span>}
+                        </span>
+                        <span className={`text-xs ${dateTextClass}`}>
+                          {formatQtyShort(group.totalHours)} /{" "}
+                          {DAILY_HOURS_LIMIT} ч
+                        </span>
+                      </div>
+                    </div>
                   </div>
 
                   {/* Entries for this day */}
                   <div className="divide-y divide-border">
                     {group.entries.map((entry) => {
-                      const norm = norms.find(n => n.article === entry.article);
-                      const hours = norm ? calcHours(entry.quantity, norm.timeHours) : 0;
+                      const hours = entry.normHours
+                        ? calcHours(entry.quantity, entry.normHours)
+                        : 0;
+                      const lanePercent = getTimelineLanePercent(
+                        entry.timelineLaneIndex,
+                        totalTimelineCount,
+                      );
 
                       return (
                         <LongPressWrapper
@@ -533,15 +764,72 @@ export function WelderCardScreen() {
                           onLongPress={() => handleEditOpen(entry)}
                         >
                           <div
-                            className="flex items-center justify-between px-4 py-2.5 active:bg-accent/50 cursor-pointer"
+                            className="flex items-stretch active:bg-accent/50 cursor-pointer"
                             onClick={() => handleEntryTap(entry.article)}
                           >
-                            <span className="font-mono font-semibold text-sm">{entry.article}</span>
-                            <div className="flex items-center gap-3">
-                              <span className="text-sm">{formatQtyShort(entry.quantity)} шт</span>
-                              {hours > 0 && (
-                                <span className="text-xs text-muted-foreground">{formatQtyShort(hours)} ч</span>
+                            <div
+                              className="relative shrink-0"
+                              style={{ width: TIMELINE_LEFT_WIDTH }}
+                            >
+                              {!entry.isTimelineStart && (
+                                <div
+                                  className="absolute -translate-x-1/2 rounded-full"
+                                  style={{
+                                    left: `${lanePercent}%`,
+                                    top: 0,
+                                    height: "50%",
+                                    width: `${TIMELINE_LINE_WIDTH}px`,
+                                    backgroundColor:
+                                      entry.timelineColorResolved,
+                                  }}
+                                />
                               )}
+                              {!entry.isTimelineEnd && (
+                                <div
+                                  className="absolute -translate-x-1/2 rounded-full"
+                                  style={{
+                                    left: `${lanePercent}%`,
+                                    top: "50%",
+                                    bottom: 0,
+                                    width: `${TIMELINE_LINE_WIDTH}px`,
+                                    backgroundColor:
+                                      entry.timelineColorResolved,
+                                  }}
+                                />
+                              )}
+                              <div
+                                className="absolute top-1/2 right-0 -translate-y-1/2 rounded-full"
+                                style={{
+                                  left: `${lanePercent}%`,
+                                  height: `${TIMELINE_LINE_WIDTH}px`,
+                                  backgroundColor: entry.timelineColorResolved,
+                                }}
+                              />
+                            </div>
+
+                            <div className="flex-1 min-w-0 pr-4 py-2.5 flex items-center justify-between gap-3">
+                              <div className="min-w-0 flex items-center gap-2 rounded-r-lg border border-l-0 border-border/60 bg-background/80 px-3 py-2">
+                                <span
+                                  className="h-2.5 w-2.5 shrink-0 rounded-full"
+                                  style={{
+                                    backgroundColor:
+                                      entry.timelineColorResolved,
+                                  }}
+                                />
+                                <span className="font-mono font-semibold text-sm truncate">
+                                  {entry.article}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-3 shrink-0">
+                                <span className="text-sm">
+                                  {formatQtyShort(entry.quantity)} шт
+                                </span>
+                                {hours > 0 && (
+                                  <span className="text-xs text-muted-foreground">
+                                    {formatQtyShort(hours)} ч
+                                  </span>
+                                )}
+                              </div>
                             </div>
                           </div>
                         </LongPressWrapper>
@@ -556,15 +844,22 @@ export function WelderCardScreen() {
       </div>
 
       {/* Edit/Delete Modal */}
-      <Dialog open={editModal.open} onOpenChange={(open) => setEditModal({ open, entry: null })}>
-        <DialogContent className="max-w-[300px]">
+      <Dialog
+        open={editModal.open}
+        onOpenChange={(open) => setEditModal({ open, entry: null })}
+      >
+        <DialogContent className="max-w-75">
           <DialogHeader>
             <DialogTitle>Редактировать запись</DialogTitle>
           </DialogHeader>
           <div className="py-2">
-            <div className="text-sm font-mono font-semibold mb-1">{editModal.entry?.article}</div>
+            <div className="text-sm font-mono font-semibold mb-1">
+              {editModal.entry?.article}
+            </div>
             <div className="text-xs text-muted-foreground mb-2">
-              {editModal.entry && formatDate(editModal.entry.date)}{editModal.entry?.dayType === 'sb' ? ' СБ' : ''}{editModal.entry?.dayType === 'vs' ? ' ВС' : ''}
+              {editModal.entry && formatDate(editModal.entry.date)}
+              {editModal.entry?.dayType === "sb" ? " СБ" : ""}
+              {editModal.entry?.dayType === "vs" ? " ВС" : ""}
             </div>
             <input
               type="text"
@@ -586,10 +881,7 @@ export function WelderCardScreen() {
             >
               <Trash2 className="w-4 h-4 mr-1" /> Удалить
             </Button>
-            <Button
-              className="flex-1"
-              onClick={handleEditSave}
-            >
+            <Button className="flex-1" onClick={handleEditSave}>
               <Pencil className="w-4 h-4 mr-1" /> Сохранить
             </Button>
           </DialogFooter>

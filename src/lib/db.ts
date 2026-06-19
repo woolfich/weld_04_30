@@ -1,4 +1,4 @@
-import Dexie, { type EntityTable } from 'dexie';
+import Dexie, { type EntityTable } from "dexie";
 
 // Norm - product time standard
 export interface Norm {
@@ -37,7 +37,9 @@ export interface WorkEntry {
   article: string;
   quantity: number; // can be decimal, e.g., 0.5
   date: string; // ISO date string YYYY-MM-DD - the date the work is attributed to
-  dayType: 'workday' | 'sb' | 'vs'; // СБ/ВС flag
+  dayType: "workday" | "sb" | "vs"; // СБ/ВС flag
+  timelineId?: string; // shared by all split records created from one add action
+  timelineColor?: string; // random color assigned to a timeline
   createdAt: Date;
   updatedAt: Date;
 }
@@ -52,18 +54,27 @@ export interface ExportData {
   version: string;
 }
 
-const db = new Dexie('WelderTrackerDB') as Dexie & {
-  norms: EntityTable<Norm, 'id'>;
-  plans: EntityTable<Plan, 'id'>;
-  welders: EntityTable<Welder, 'id'>;
-  workEntries: EntityTable<WorkEntry, 'id'>;
+const db = new Dexie("WelderTrackerDB") as Dexie & {
+  norms: EntityTable<Norm, "id">;
+  plans: EntityTable<Plan, "id">;
+  welders: EntityTable<Welder, "id">;
+  workEntries: EntityTable<WorkEntry, "id">;
 };
 
 db.version(1).stores({
-  norms: '++id, article, updatedAt',
-  plans: '++id, article, completedAt, createdAt, updatedAt',
-  welders: '++id, name, updatedAt',
-  workEntries: '++id, welderId, planId, article, date, dayType, createdAt, updatedAt',
+  norms: "++id, article, updatedAt",
+  plans: "++id, article, completedAt, createdAt, updatedAt",
+  welders: "++id, name, updatedAt",
+  workEntries:
+    "++id, welderId, planId, article, date, dayType, createdAt, updatedAt",
+});
+
+db.version(2).stores({
+  norms: "++id, article, updatedAt",
+  plans: "++id, article, completedAt, createdAt, updatedAt",
+  welders: "++id, name, updatedAt",
+  workEntries:
+    "++id, welderId, planId, article, date, dayType, timelineId, createdAt, updatedAt",
 });
 
 export { db };
