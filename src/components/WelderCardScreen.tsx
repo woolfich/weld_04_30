@@ -32,13 +32,17 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 
+// ─── Timeline types ──────────────────────────────────────────────────────────
+
+type ConnectorMode = "top" | "bottom" | "single" | "none";
+
 interface DisplayEntry extends WorkEntry {
   normHours?: number;
   timelineKey: string;
   timelineColorResolved: string;
-  timelineLaneIndex: number;
-  isTimelineStart: boolean;
-  isTimelineEnd: boolean;
+  hasTimelineAbove: boolean;
+  hasTimelineBelow: boolean;
+  connectorMode: ConnectorMode;
 }
 
 interface DayGroup {
@@ -49,49 +53,140 @@ interface DayGroup {
   headerActiveTimelineKeys: string[];
 }
 
-const LEGACY_TIMELINE_BUCKET_MS = 1000;
+// ─── Timeline visual constants (px) ──────────────────────────────────────────
+
 const TIMELINE_LEFT_WIDTH = "30%";
-const TIMELINE_LINE_WIDTH = 3;
+const TL_LINE_W = 2.5; // vertical / horizontal line thickness
+const TL_ARM_W = 14; // horizontal arm width (from right edge of left panel)
+const TL_CORNER = 6; // CSS border-radius for the elbow
 
-function generateRandomTimelineColor(): string {
-  const hue = Math.floor(Math.random() * 360);
-  const saturation = 65 + Math.floor(Math.random() * 20);
-  const lightness = 45 + Math.floor(Math.random() * 10);
-  return `hsl(${hue} ${saturation}% ${lightness}%)`;
-}
+// ─── Timeline helpers ─────────────────────────────────────────────────────────
 
-function getStableColorFromSeed(seed: string): string {
-  let hash = 0;
-  for (let i = 0; i < seed.length; i++) {
-    hash = (hash * 31 + seed.charCodeAt(i)) | 0;
-  }
-  const hue = Math.abs(hash) % 360;
-  return `hsl(${hue} 72% 52%)`;
-}
+const LEGACY_BUCKET_MS = 1000;
 
 function getTimelineKey(entry: WorkEntry): string {
   if (entry.timelineId) return entry.timelineId;
-
-  const createdAtMs = new Date(entry.createdAt).getTime();
-  const bucket = Number.isFinite(createdAtMs)
-    ? Math.floor(createdAtMs / LEGACY_TIMELINE_BUCKET_MS)
-    : 0;
-
+  const ms = new Date(entry.createdAt).getTime();
+  const bucket = Number.isFinite(ms) ? Math.floor(ms / LEGACY_BUCKET_MS) : 0;
   return `legacy-${entry.welderId}-${entry.planId}-${entry.article}-${bucket}`;
 }
 
 function getTimelineColor(entry: WorkEntry): string {
-  return entry.timelineColor || getStableColorFromSeed(getTimelineKey(entry));
+  if (entry.timelineColor) return entry.timelineColor;
+  let hash = 0;
+  const key = getTimelineKey(entry);
+  for (let i = 0; i < key.length; i++)
+    hash = (hash * 31 + key.charCodeAt(i)) | 0;
+  return `hsl(${Math.abs(hash) % 360} 72% 52%)`;
 }
 
-function getTimelineLanePercent(laneIndex: number, laneCount: number): number {
-  if (laneCount <= 1) return 50;
-  const sidePadding = 14;
+function generateRandomColor(): string {
+  const hue = Math.floor(Math.random() * 360);
+  return `hsl(${hue} ${65 + Math.floor(Math.random() * 20)}% ${45 + Math.floor(Math.random() * 10)}%)`;
+}
+
+function getMostRecentEntry(entries: WorkEntry[]): WorkEntry | undefined {
+  return entries.reduce<WorkEntry | undefined>((latest, e) => {
+    if (!latest) return e;
+    const lt = new Date(latest.createdAt).getTime();
+    const et = new Date(e.createdAt).getTime();
+    if (et !== lt) return et > lt ? e : latest;
+    return (e.id || 0) > (latest.id || 0) ? e : latest;
+  }, undefined);
+}
+
+// ─── Timeline row CSS renderer ────────────────────────────────────────────────
+
+function TimelineCell({ color, mode }: { color: string; mode: ConnectorMode }) {
+  const lineStyle: React.CSSProperties = {
+    position: "absolute",
+    right: `${TL_ARM_W - TL_LINE_W / 2}px`,
+    width: `${TL_LINE_W}px`,
+    backgroundColor: color,
+  };
+
+  if (mode === "none") {
+    // Passthrough: full vertical line, no arm
+    return <div style={{ ...lineStyle, top: 0, bottom: 0 }} />;
+  }
+
+  if (mode === "single") {
+    // No vertical line, just a short horizontal arm with rounded left tip
+    return (
+      <div
+        style={{
+          position: "absolute",
+          right: 0,
+          top: `calc(50% - ${TL_LINE_W / 2}px)`,
+          width: `${TL_ARM_W}px`,
+          height: `${TL_LINE_W}px`,
+          backgroundColor: color,
+          borderRadius: `${TL_CORNER}px 0 0 ${TL_CORNER}px`,
+        }}
+      />
+    );
+  }
+
+  if (mode === "top") {
+    // Top entry: arm + elbow turning down + vertical line going down
+    return (
+      <>
+        {/* Arm + rounded elbow (turns downward) */}
+        <div
+          style={{
+            position: "absolute",
+            right: 0,
+            top: `calc(50% - ${TL_LINE_W / 2}px)`,
+            width: `${TL_ARM_W + TL_LINE_W / 2}px`,
+            height: `${TL_CORNER + TL_LINE_W / 2}px`,
+            borderTop: `${TL_LINE_W}px solid ${color}`,
+            borderLeft: `${TL_LINE_W}px solid ${color}`,
+            borderTopLeftRadius: `${TL_CORNER}px`,
+            boxSizing: "border-box",
+          }}
+        />
+        {/* Vertical line going down */}
+        <div
+          style={{
+            ...lineStyle,
+            top: `calc(50% + ${TL_CORNER}px)`,
+            bottom: 0,
+          }}
+        />
+      </>
+    );
+  }
+
+  // mode === "bottom": line from above + elbow turning into arm
   return (
-    sidePadding +
-    (laneIndex * (100 - sidePadding * 2)) / Math.max(laneCount - 1, 1)
+    <>
+      {/* Vertical line from above */}
+      <div
+        style={{
+          ...lineStyle,
+          top: 0,
+          height: `calc(50% - ${TL_CORNER}px)`,
+        }}
+      />
+      {/* Rounded elbow + arm */}
+      <div
+        style={{
+          position: "absolute",
+          right: 0,
+          top: `calc(50% - ${TL_CORNER}px)`,
+          width: `${TL_ARM_W + TL_LINE_W / 2}px`,
+          height: `${TL_CORNER + TL_LINE_W / 2}px`,
+          borderBottom: `${TL_LINE_W}px solid ${color}`,
+          borderLeft: `${TL_LINE_W}px solid ${color}`,
+          borderBottomLeftRadius: `${TL_CORNER}px`,
+          boxSizing: "border-box",
+        }}
+      />
+    </>
   );
 }
+
+// ─── Main component ───────────────────────────────────────────────────────────
 
 export function WelderCardScreen() {
   const { activeWelderId, setActiveWelderId, setActiveScreen } = useAppStore();
@@ -139,22 +234,19 @@ export function WelderCardScreen() {
     await db.welders.update(activeWelderId, { vsActive: !vsActive });
   }, [activeWelderId, vsActive]);
 
-  // Active plan articles for autocomplete
-  const activePlanArticles = useMemo(() => {
-    return [
+  const activePlanArticles = useMemo(
+    () => [
       ...new Set(plans.filter((p) => !p.completedAt).map((p) => p.article)),
-    ];
-  }, [plans]);
-
-  // Get active plan for an article
-  const getActivePlan = useCallback(
-    (article: string): Plan | undefined => {
-      return plans.find((p) => p.article === article && !p.completedAt);
-    },
+    ],
     [plans],
   );
 
-  // Get article info hint
+  const getActivePlan = useCallback(
+    (article: string): Plan | undefined =>
+      plans.find((p) => p.article === article && !p.completedAt),
+    [plans],
+  );
+
   const getArticleHint = useCallback(
     (article: string): string => {
       const activePlan = getActivePlan(article);
@@ -171,8 +263,10 @@ export function WelderCardScreen() {
       for (const entry of planEntries) {
         const w = welders.find((w2) => w2.id === entry.welderId);
         if (w) {
-          const current = welderMap.get(w.name) || 0;
-          welderMap.set(w.name, roundToHundredths(current + entry.quantity));
+          welderMap.set(
+            w.name,
+            roundToHundredths((welderMap.get(w.name) || 0) + entry.quantity),
+          );
         }
       }
 
@@ -185,18 +279,14 @@ export function WelderCardScreen() {
     [plans, allWorkEntries, welders, getActivePlan],
   );
 
-  // Calculate existing hours for this welder on a given date
   const getExistingHoursForDate = useCallback(
     (date: string): number => {
-      const dayEntries = workEntries.filter((e) => e.date === date);
-      let totalHours = 0;
-      for (const entry of dayEntries) {
+      let total = 0;
+      for (const entry of workEntries.filter((e) => e.date === date)) {
         const norm = norms.find((n) => n.article === entry.article);
-        if (norm) {
-          totalHours += calcHours(entry.quantity, norm.timeHours);
-        }
+        if (norm) total += calcHours(entry.quantity, norm.timeHours);
       }
-      return roundToHundredths(totalHours);
+      return roundToHundredths(total);
     },
     [workEntries, norms],
   );
@@ -216,7 +306,6 @@ export function WelderCardScreen() {
     setPlanCompleteMsg("");
   }, []);
 
-  // Handle tapping an existing entry to autofill input
   const handleEntryTap = useCallback((article: string) => {
     const normalized = normalizeArticle(article);
     setArticleInput(normalized);
@@ -226,11 +315,10 @@ export function WelderCardScreen() {
   }, []);
 
   /**
-   * Main add handler with 8h daily distribution logic:
-   * 1. Calculate total hours = qty × normHours
-   * 2. Fill initial date(s): СБ→Saturday, ВС→Sunday, or today
-   * 3. Overflow to future workdays, each limited to 8h
-   * 4. Each day gets a proportional share of the quantity
+   * Add handler:
+   * - Each add = new timelineId (separate timeline)
+   * - Color reused while same article is added consecutively
+   * - Color resets when a different article is added in between
    */
   const handleAdd = useCallback(async () => {
     if (!activeWelderId) return;
@@ -244,7 +332,6 @@ export function WelderCardScreen() {
       return;
     }
 
-    // Check if plan is already completed
     const planEntries = allWorkEntries.filter(
       (e) => e.planId === activePlan.id,
     );
@@ -259,132 +346,105 @@ export function WelderCardScreen() {
     const norm = norms.find((n) => n.article === article);
     if (!norm) return;
 
+    // Always new timeline ID, but reuse color while article stays the same
+    const lastEntry = getMostRecentEntry(workEntries);
     const timelineId = crypto.randomUUID();
-    const timelineColor = generateRandomTimelineColor();
+    const timelineColor =
+      lastEntry?.article === article
+        ? getTimelineColor(lastEntry)
+        : generateRandomColor();
     const batchTimestamp = new Date();
 
-    // Calculate total hours for this work
-    const totalHours = calcHours(qty, norm.timeHours);
-    let remainingHours = roundToHundredths(totalHours);
+    let remainingHours = roundToHundredths(calcHours(qty, norm.timeHours));
 
-    // === Step 1: Generate initial date sequence ===
     const initialDates: { date: string; dayType: "workday" | "sb" | "vs" }[] =
       [];
-
-    if (sbActive) {
-      initialDates.push({ date: getSaturdayStr(), dayType: "sb" });
-    }
-    if (vsActive) {
-      initialDates.push({ date: getSundayStr(), dayType: "vs" });
-    }
+    if (sbActive) initialDates.push({ date: getSaturdayStr(), dayType: "sb" });
+    if (vsActive) initialDates.push({ date: getSundayStr(), dayType: "vs" });
     if (!sbActive && !vsActive) {
-      // Normal workday - start from today
       const today = getTodayStr();
-      if (isWeekend(today)) {
-        // Weekend without СБ/ВС - start from next Monday
-        initialDates.push({ date: getNextWorkday(today), dayType: "workday" });
-      } else {
-        initialDates.push({ date: today, dayType: "workday" });
-      }
+      initialDates.push({
+        date: isWeekend(today) ? getNextWorkday(today) : today,
+        dayType: "workday",
+      });
     }
 
-    // === Step 2: Distribute hours across initial dates ===
-    for (const dateInfo of initialDates) {
+    for (const di of initialDates) {
       if (remainingHours <= 0.001) break;
-
-      const existingHours = getExistingHoursForDate(dateInfo.date);
-      const availableHours = Math.max(0, DAILY_HOURS_LIMIT - existingHours);
-
-      if (availableHours <= 0) continue;
-
-      const allocatedHours = roundToHundredths(
-        Math.min(availableHours, remainingHours),
+      const available = Math.max(
+        0,
+        DAILY_HOURS_LIMIT - getExistingHoursForDate(di.date),
       );
-      const allocatedQty = roundToHundredths(allocatedHours / norm.timeHours);
-
+      if (available <= 0) continue;
+      const allocated = roundToHundredths(Math.min(available, remainingHours));
       await db.workEntries.add({
         welderId: activeWelderId,
         planId: activePlan.id!,
         article,
-        quantity: allocatedQty,
-        date: dateInfo.date,
-        dayType: dateInfo.dayType,
+        quantity: roundToHundredths(allocated / norm.timeHours),
+        date: di.date,
+        dayType: di.dayType,
         timelineId,
         timelineColor,
         createdAt: batchTimestamp,
         updatedAt: batchTimestamp,
       });
-
-      remainingHours = roundToHundredths(remainingHours - allocatedHours);
+      remainingHours = roundToHundredths(remainingHours - allocated);
     }
 
-    // === Step 3: Overflow to future workdays ===
     if (remainingHours > 0.001) {
-      const lastInitialDate =
+      const lastDate =
         initialDates.length > 0
           ? initialDates[initialDates.length - 1].date
           : getTodayStr();
-      let currentDate = getNextWorkday(lastInitialDate);
-      let safetyCounter = 0;
-      const MAX_DAYS = 100;
-
-      while (remainingHours > 0.001 && safetyCounter < MAX_DAYS) {
-        const existingHours = getExistingHoursForDate(currentDate);
-        const availableHours = Math.max(0, DAILY_HOURS_LIMIT - existingHours);
-
-        if (availableHours > 0) {
-          const allocatedHours = roundToHundredths(
-            Math.min(availableHours, remainingHours),
+      let cur = getNextWorkday(lastDate);
+      let safety = 0;
+      while (remainingHours > 0.001 && safety < 100) {
+        const available = Math.max(
+          0,
+          DAILY_HOURS_LIMIT - getExistingHoursForDate(cur),
+        );
+        if (available > 0) {
+          const allocated = roundToHundredths(
+            Math.min(available, remainingHours),
           );
-          const allocatedQty = roundToHundredths(
-            allocatedHours / norm.timeHours,
-          );
-          const dayType = getDayTypeForDate(currentDate);
-
           await db.workEntries.add({
             welderId: activeWelderId,
             planId: activePlan.id!,
             article,
-            quantity: allocatedQty,
-            date: currentDate,
-            dayType,
+            quantity: roundToHundredths(allocated / norm.timeHours),
+            date: cur,
+            dayType: getDayTypeForDate(cur),
             timelineId,
             timelineColor,
             createdAt: batchTimestamp,
             updatedAt: batchTimestamp,
           });
-
-          remainingHours = roundToHundredths(remainingHours - allocatedHours);
+          remainingHours = roundToHundredths(remainingHours - allocated);
         }
-
-        currentDate = getNextWorkday(currentDate);
-        safetyCounter++;
+        cur = getNextWorkday(cur);
+        safety++;
       }
     }
 
-    // Update welder's updatedAt so they move to top on main screen
     await db.welders.update(activeWelderId, { updatedAt: new Date() });
 
-    // Update plan completion
-    const updatedPlanEntries = await db.workEntries
+    const updatedEntries = await db.workEntries
       .where("planId")
       .equals(activePlan.id!)
       .toArray();
-    const newCompletedQty = roundToHundredths(
-      updatedPlanEntries.reduce((sum, e) => sum + e.quantity, 0),
+    const newCompleted = roundToHundredths(
+      updatedEntries.reduce((s, e) => s + e.quantity, 0),
     );
-    if (newCompletedQty >= activePlan.targetQty && !activePlan.completedAt) {
+    if (newCompleted >= activePlan.targetQty && !activePlan.completedAt) {
       await db.plans.update(activePlan.id!, {
         completedAt: new Date(),
         updatedAt: new Date(),
       });
     } else {
-      await db.plans.update(activePlan.id!, {
-        updatedAt: new Date(),
-      });
+      await db.plans.update(activePlan.id!, { updatedAt: new Date() });
     }
 
-    // Reset form
     setArticleInput("");
     setQtyInput("");
     setSelectedArticle("");
@@ -407,21 +467,18 @@ export function WelderCardScreen() {
   const handleDelete = useCallback(async (id: number) => {
     const entry = await db.workEntries.get(id);
     if (!entry) return;
-
     await db.workEntries.delete(id);
-
-    // Re-check plan completion after deletion
     if (entry.planId) {
       const plan = await db.plans.get(entry.planId);
       if (plan) {
-        const planEntries = await db.workEntries
+        const remaining = await db.workEntries
           .where("planId")
           .equals(entry.planId)
           .toArray();
-        const completedQty = roundToHundredths(
-          planEntries.reduce((sum, e) => sum + e.quantity, 0),
+        const done = roundToHundredths(
+          remaining.reduce((s, e) => s + e.quantity, 0),
         );
-        if (completedQty < plan.targetQty && plan.completedAt) {
+        if (done < plan.targetQty && plan.completedAt) {
           await db.plans.update(entry.planId, {
             completedAt: null,
             updatedAt: new Date(),
@@ -446,23 +503,22 @@ export function WelderCardScreen() {
       updatedAt: new Date(),
     });
 
-    // Re-check plan completion
     const planId = editModal.entry.planId;
     const plan = await db.plans.get(planId);
     if (plan) {
-      const planEntries = await db.workEntries
+      const entries = await db.workEntries
         .where("planId")
         .equals(planId)
         .toArray();
-      const completedQty = roundToHundredths(
-        planEntries.reduce((sum, e) => sum + e.quantity, 0),
+      const done = roundToHundredths(
+        entries.reduce((s, e) => s + e.quantity, 0),
       );
-      if (completedQty >= plan.targetQty && !plan.completedAt) {
+      if (done >= plan.targetQty && !plan.completedAt) {
         await db.plans.update(planId, {
           completedAt: new Date(),
           updatedAt: new Date(),
         });
-      } else if (completedQty < plan.targetQty && plan.completedAt) {
+      } else if (done < plan.targetQty && plan.completedAt) {
         await db.plans.update(planId, {
           completedAt: null,
           updatedAt: new Date(),
@@ -473,37 +529,34 @@ export function WelderCardScreen() {
     setEditModal({ open: false, entry: null });
   }, [editModal.entry, editQty]);
 
-  // Group entries by date
+  // ─── Build day groups with timeline metadata ────────────────────────────────
+
   const dayGroups = useMemo((): DayGroup[] => {
     const groupMap = new Map<string, DayGroup>();
 
     for (const entry of workEntries) {
-      const dateKey = entry.date;
-      if (!groupMap.has(dateKey)) {
-        groupMap.set(dateKey, {
-          date: dateKey,
+      if (!groupMap.has(entry.date)) {
+        groupMap.set(entry.date, {
+          date: entry.date,
           dayType: entry.dayType,
           entries: [],
           totalHours: 0,
           headerActiveTimelineKeys: [],
         });
       }
-
-      const group = groupMap.get(dateKey)!;
+      const group = groupMap.get(entry.date)!;
       const norm = norms.find((n) => n.article === entry.article);
       const normHours = norm?.timeHours || 0;
-      const hours = calcHours(entry.quantity, normHours);
-
       group.entries.push({
         ...entry,
         normHours,
         timelineKey: getTimelineKey(entry),
         timelineColorResolved: getTimelineColor(entry),
-        timelineLaneIndex: 0,
-        isTimelineStart: false,
-        isTimelineEnd: false,
+        hasTimelineAbove: false,
+        hasTimelineBelow: false,
+        connectorMode: "single",
       });
-      group.totalHours += hours;
+      group.totalHours += calcHours(entry.quantity, normHours);
     }
 
     for (const group of groupMap.values()) {
@@ -517,64 +570,54 @@ export function WelderCardScreen() {
     const sortedGroups = Array.from(groupMap.values()).sort((a, b) =>
       b.date.localeCompare(a.date),
     );
-    const flatEntries = sortedGroups.flatMap((group) => group.entries);
-    const timelineLaneMap = new Map<string, number>();
-    const timelineIndexMap = new Map<string, number[]>();
 
-    flatEntries.forEach((entry, index) => {
-      if (!timelineLaneMap.has(entry.timelineKey)) {
-        timelineLaneMap.set(entry.timelineKey, timelineLaneMap.size);
-      }
-      const indexes = timelineIndexMap.get(entry.timelineKey) || [];
-      indexes.push(index);
-      timelineIndexMap.set(entry.timelineKey, indexes);
+    // Build flat list to detect first/last positions per timelineKey
+    const flat = sortedGroups.flatMap((g) => g.entries);
+    const indexMap = new Map<string, number[]>();
+    flat.forEach((e, i) => {
+      const arr = indexMap.get(e.timelineKey) || [];
+      arr.push(i);
+      indexMap.set(e.timelineKey, arr);
     });
 
-    flatEntries.forEach((entry, index) => {
-      const indexes = timelineIndexMap.get(entry.timelineKey) || [];
-      entry.timelineLaneIndex = timelineLaneMap.get(entry.timelineKey) || 0;
-      entry.isTimelineStart = index === indexes[0];
-      entry.isTimelineEnd = index === indexes[indexes.length - 1];
+    flat.forEach((e, i) => {
+      const arr = indexMap.get(e.timelineKey)!;
+      const first = arr[0];
+      const last = arr[arr.length - 1];
+      e.hasTimelineAbove = i !== first;
+      e.hasTimelineBelow = i !== last;
+      if (!e.hasTimelineAbove && !e.hasTimelineBelow)
+        e.connectorMode = "single";
+      else if (!e.hasTimelineAbove) e.connectorMode = "top";
+      else if (!e.hasTimelineBelow) e.connectorMode = "bottom";
+      else e.connectorMode = "none";
     });
 
-    let currentStartIndex = 0;
+    // Determine which timelines pass through each day-group header
+    let startIdx = 0;
     for (const group of sortedGroups) {
-      group.headerActiveTimelineKeys = Array.from(timelineIndexMap.entries())
+      group.headerActiveTimelineKeys = Array.from(indexMap.entries())
         .filter(
-          ([, indexes]) =>
-            indexes[0] < currentStartIndex &&
-            indexes[indexes.length - 1] >= currentStartIndex,
+          ([, arr]) => arr[0] < startIdx && arr[arr.length - 1] >= startIdx,
         )
-        .map(([timelineKey]) => timelineKey);
-      currentStartIndex += group.entries.length;
+        .map(([key]) => key);
+      startIdx += group.entries.length;
     }
 
     return sortedGroups;
   }, [workEntries, norms]);
 
-  const totalTimelineCount = useMemo(() => {
-    const keys = new Set<string>();
+  // Map of timelineKey → color for header passthrough rendering
+  const timelineColorMap = useMemo(() => {
+    const map = new Map<string, string>();
     for (const group of dayGroups) {
       for (const entry of group.entries) {
-        keys.add(entry.timelineKey);
-      }
-    }
-    return Math.max(keys.size, 1);
-  }, [dayGroups]);
-
-  const timelineMeta = useMemo(() => {
-    const meta = new Map<string, { color: string; laneIndex: number }>();
-    for (const group of dayGroups) {
-      for (const entry of group.entries) {
-        if (!meta.has(entry.timelineKey)) {
-          meta.set(entry.timelineKey, {
-            color: entry.timelineColorResolved,
-            laneIndex: entry.timelineLaneIndex,
-          });
+        if (!map.has(entry.timelineKey)) {
+          map.set(entry.timelineKey, entry.timelineColorResolved);
         }
       }
     }
-    return meta;
+    return map;
   }, [dayGroups]);
 
   const handleBack = useCallback(() => {
@@ -596,7 +639,7 @@ export function WelderCardScreen() {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Header with welder name and СБ/ВС */}
+      {/* ── Header ── */}
       <div className="shrink-0 bg-card border-b border-border px-3 py-2">
         <div className="flex items-center gap-2 mb-2">
           <button
@@ -630,7 +673,6 @@ export function WelderCardScreen() {
           </button>
         </div>
 
-        {/* Input row */}
         <div className="flex items-center gap-2">
           <div className="flex-1 flex items-center gap-1.5">
             <AutoComplete
@@ -665,14 +707,11 @@ export function WelderCardScreen() {
           </button>
         </div>
 
-        {/* Article info hint */}
         {showArticleInfo && currentArticleHint && (
           <div className="mt-1.5 px-2 py-1.5 text-xs text-muted-foreground bg-muted rounded-md">
             {currentArticleHint}
           </div>
         )}
-
-        {/* Plan complete message */}
         {planCompleteMsg && (
           <div className="mt-1.5 px-2 py-1.5 text-xs text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-900/30 rounded-md font-semibold">
             {planCompleteMsg}
@@ -680,7 +719,7 @@ export function WelderCardScreen() {
         )}
       </div>
 
-      {/* List grouped by day */}
+      {/* ── List ── */}
       <div className="flex-1 overflow-y-auto">
         {dayGroups.length === 0 ? (
           <div className="flex items-center justify-center h-32 text-muted-foreground text-sm">
@@ -704,27 +743,30 @@ export function WelderCardScreen() {
 
               return (
                 <div key={group.date}>
-                  {/* Day header */}
+                  {/* ── Day header ── */}
                   <div
                     className={`sticky top-0 z-10 backdrop-blur-sm ${headerBg}`}
                   >
                     <div className="flex items-stretch">
+                      {/* Timeline passthrough in header */}
                       <div
                         className="relative shrink-0"
                         style={{ width: TIMELINE_LEFT_WIDTH }}
                       >
-                        {group.headerActiveTimelineKeys.map((timelineKey) => {
-                          const meta = timelineMeta.get(timelineKey);
-                          if (!meta) return null;
-
+                        {group.headerActiveTimelineKeys.map((key) => {
+                          const color = timelineColorMap.get(key);
+                          if (!color) return null;
                           return (
                             <div
-                              key={timelineKey}
-                              className="absolute inset-y-0 -translate-x-1/2 rounded-full opacity-80"
+                              key={key}
                               style={{
-                                left: `${getTimelineLanePercent(meta.laneIndex, totalTimelineCount)}%`,
-                                width: `${TIMELINE_LINE_WIDTH}px`,
-                                backgroundColor: meta.color,
+                                position: "absolute",
+                                right: `${TL_ARM_W - TL_LINE_W / 2}px`,
+                                top: 0,
+                                bottom: 0,
+                                width: `${TL_LINE_W}px`,
+                                backgroundColor: color,
+                                opacity: 0.75,
                               }}
                             />
                           );
@@ -747,16 +789,12 @@ export function WelderCardScreen() {
                     </div>
                   </div>
 
-                  {/* Entries for this day */}
+                  {/* ── Entries ── */}
                   <div className="divide-y divide-border">
                     {group.entries.map((entry) => {
                       const hours = entry.normHours
                         ? calcHours(entry.quantity, entry.normHours)
                         : 0;
-                      const lanePercent = getTimelineLanePercent(
-                        entry.timelineLaneIndex,
-                        totalTimelineCount,
-                      );
 
                       return (
                         <LongPressWrapper
@@ -767,51 +805,26 @@ export function WelderCardScreen() {
                             className="flex items-stretch active:bg-accent/50 cursor-pointer"
                             onClick={() => handleEntryTap(entry.article)}
                           >
+                            {/* Timeline cell */}
                             <div
                               className="relative shrink-0"
                               style={{ width: TIMELINE_LEFT_WIDTH }}
                             >
-                              {!entry.isTimelineStart && (
-                                <div
-                                  className="absolute -translate-x-1/2 rounded-full"
-                                  style={{
-                                    left: `${lanePercent}%`,
-                                    top: 0,
-                                    height: "50%",
-                                    width: `${TIMELINE_LINE_WIDTH}px`,
-                                    backgroundColor:
-                                      entry.timelineColorResolved,
-                                  }}
-                                />
-                              )}
-                              {!entry.isTimelineEnd && (
-                                <div
-                                  className="absolute -translate-x-1/2 rounded-full"
-                                  style={{
-                                    left: `${lanePercent}%`,
-                                    top: "50%",
-                                    bottom: 0,
-                                    width: `${TIMELINE_LINE_WIDTH}px`,
-                                    backgroundColor:
-                                      entry.timelineColorResolved,
-                                  }}
-                                />
-                              )}
-                              <div
-                                className="absolute top-1/2 right-0 -translate-y-1/2 rounded-full"
-                                style={{
-                                  left: `${lanePercent}%`,
-                                  height: `${TIMELINE_LINE_WIDTH}px`,
-                                  backgroundColor: entry.timelineColorResolved,
-                                }}
+                              <TimelineCell
+                                color={entry.timelineColorResolved}
+                                mode={entry.connectorMode}
                               />
                             </div>
 
+                            {/* Article info */}
                             <div className="flex-1 min-w-0 pr-4 py-2.5 flex items-center justify-between gap-3">
-                              <div className="min-w-0 flex items-center gap-2 rounded-r-lg border border-l-0 border-border/60 bg-background/80 px-3 py-2">
+                              <div className="min-w-0 flex items-center gap-2">
                                 <span
-                                  className="h-2.5 w-2.5 shrink-0 rounded-full"
+                                  className="shrink-0 rounded-full"
                                   style={{
+                                    display: "inline-block",
+                                    width: `${TL_LINE_W + 1.5}px`,
+                                    height: `${TL_LINE_W + 1.5}px`,
                                     backgroundColor:
                                       entry.timelineColorResolved,
                                   }}
@@ -843,7 +856,7 @@ export function WelderCardScreen() {
         )}
       </div>
 
-      {/* Edit/Delete Modal */}
+      {/* ── Edit / Delete modal ── */}
       <Dialog
         open={editModal.open}
         onOpenChange={(open) => setEditModal({ open, entry: null })}
