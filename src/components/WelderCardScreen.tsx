@@ -726,27 +726,36 @@ export function WelderCardScreen() {
             Нет записей
           </div>
         ) : (
-          <div>
+          <div className="flex flex-col gap-3 px-3 py-3">
             {dayGroups.map((group) => {
               const isSb = group.dayType === "sb";
               const isVs = group.dayType === "vs";
-              const headerBg = isSb
-                ? "bg-orange-100/90 dark:bg-orange-900/40"
+
+              const cardBorder = isSb
+                ? "border-orange-200 dark:border-orange-800"
                 : isVs
-                  ? "bg-red-100/90 dark:bg-red-900/40"
-                  : "bg-muted/80";
+                  ? "border-red-200 dark:border-red-800"
+                  : "border-border";
+
+              const headerBg = isSb
+                ? "bg-orange-100 dark:bg-orange-900/50"
+                : isVs
+                  ? "bg-red-100 dark:bg-red-900/50"
+                  : "bg-muted";
+
               const dateTextClass = isSb
                 ? "text-orange-700 dark:text-orange-300"
                 : isVs
                   ? "text-red-700 dark:text-red-300"
-                  : "text-muted-foreground";
+                  : "text-foreground";
 
               return (
-                <div key={group.date}>
+                <div
+                  key={group.date}
+                  className={`rounded-xl border overflow-hidden shadow-sm ${cardBorder}`}
+                >
                   {/* ── Day header ── */}
-                  <div
-                    className={`sticky top-0 z-10 backdrop-blur-sm ${headerBg}`}
-                  >
+                  <div className={`${headerBg}`}>
                     <div className="flex items-stretch">
                       {/* Timeline passthrough in header */}
                       <div
@@ -772,16 +781,16 @@ export function WelderCardScreen() {
                           );
                         })}
                       </div>
-                      <div className="flex-1 min-w-0 px-4 py-1.5 flex justify-between items-center gap-3">
-                        <span
-                          className={`text-xs font-semibold ${dateTextClass}`}
-                        >
+                      <div className="flex-1 min-w-0 px-4 py-2 flex justify-between items-center gap-3">
+                        <span className={`text-xs font-bold ${dateTextClass}`}>
                           {formatDate(group.date)} (
                           {getShortDayName(group.date)})
-                          {isSb && <span className="ml-1 font-bold">СБ</span>}
-                          {isVs && <span className="ml-1 font-bold">ВС</span>}
+                          {isSb && <span className="ml-1">СБ</span>}
+                          {isVs && <span className="ml-1">ВС</span>}
                         </span>
-                        <span className={`text-xs ${dateTextClass}`}>
+                        <span
+                          className={`text-xs font-medium ${dateTextClass} opacity-70`}
+                        >
                           {formatQtyShort(group.totalHours)} /{" "}
                           {DAILY_HOURS_LIMIT} ч
                         </span>
@@ -790,7 +799,7 @@ export function WelderCardScreen() {
                   </div>
 
                   {/* ── Entries ── */}
-                  <div className="divide-y divide-border">
+                  <div className="bg-card divide-y divide-border">
                     {group.entries.map((entry) => {
                       const hours = entry.normHours
                         ? calcHours(entry.quantity, entry.normHours)
