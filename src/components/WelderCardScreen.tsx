@@ -720,7 +720,14 @@ export function WelderCardScreen() {
       </div>
 
       {/* ── List ── */}
-      <div className="flex-1 overflow-y-auto">
+      <div
+        className="flex-1 overflow-y-auto"
+        style={{
+          backgroundImage:
+            "radial-gradient(circle, hsl(var(--border)) 1.5px, transparent 1.5px)",
+          backgroundSize: "18px 18px",
+        }}
+      >
         {dayGroups.length === 0 ? (
           <div className="flex items-center justify-center h-32 text-muted-foreground text-sm">
             Нет записей
@@ -731,10 +738,10 @@ export function WelderCardScreen() {
               const isSb = group.dayType === "sb";
               const isVs = group.dayType === "vs";
 
-              const cardBorder = isSb
-                ? "border-orange-200 dark:border-orange-800"
+              const cardBorderColor = isSb
+                ? "border-orange-300 dark:border-orange-700"
                 : isVs
-                  ? "border-red-200 dark:border-red-800"
+                  ? "border-red-300 dark:border-red-700"
                   : "border-border";
 
               const headerBg = isSb
@@ -750,114 +757,109 @@ export function WelderCardScreen() {
                   : "text-foreground";
 
               return (
-                <div
-                  key={group.date}
-                  className={`rounded-xl border overflow-hidden shadow-sm ${cardBorder}`}
-                >
-                  {/* ── Day header ── */}
-                  <div className={`${headerBg}`}>
-                    <div className="flex items-stretch">
-                      {/* Timeline passthrough in header */}
-                      <div
-                        className="relative shrink-0"
-                        style={{ width: TIMELINE_LEFT_WIDTH }}
+                <div key={group.date}>
+                  {/* Header row: timeline outside, card header inside */}
+                  <div className="flex">
+                    <div
+                      className="relative shrink-0"
+                      style={{ width: TIMELINE_LEFT_WIDTH }}
+                    >
+                      {group.headerActiveTimelineKeys.map((key) => {
+                        const color = timelineColorMap.get(key);
+                        if (!color) return null;
+                        return (
+                          <div
+                            key={key}
+                            style={{
+                              position: "absolute",
+                              right: `${TL_ARM_W - TL_LINE_W / 2}px`,
+                              top: 0,
+                              bottom: 0,
+                              width: `${TL_LINE_W}px`,
+                              backgroundColor: color,
+                              opacity: 0.75,
+                            }}
+                          />
+                        );
+                      })}
+                    </div>
+                    <div
+                      className={`flex-1 px-4 py-2 flex justify-between items-center border-t border-x rounded-t-xl ${headerBg} ${cardBorderColor}`}
+                    >
+                      <span className={`text-xs font-bold ${dateTextClass}`}>
+                        {formatDate(group.date)} ({getShortDayName(group.date)})
+                        {isSb && <span className="ml-1">СБ</span>}
+                        {isVs && <span className="ml-1">ВС</span>}
+                      </span>
+                      <span
+                        className={`text-xs font-medium ${dateTextClass} opacity-70`}
                       >
-                        {group.headerActiveTimelineKeys.map((key) => {
-                          const color = timelineColorMap.get(key);
-                          if (!color) return null;
-                          return (
-                            <div
-                              key={key}
-                              style={{
-                                position: "absolute",
-                                right: `${TL_ARM_W - TL_LINE_W / 2}px`,
-                                top: 0,
-                                bottom: 0,
-                                width: `${TL_LINE_W}px`,
-                                backgroundColor: color,
-                                opacity: 0.75,
-                              }}
-                            />
-                          );
-                        })}
-                      </div>
-                      <div className="flex-1 min-w-0 px-4 py-2 flex justify-between items-center gap-3">
-                        <span className={`text-xs font-bold ${dateTextClass}`}>
-                          {formatDate(group.date)} (
-                          {getShortDayName(group.date)})
-                          {isSb && <span className="ml-1">СБ</span>}
-                          {isVs && <span className="ml-1">ВС</span>}
-                        </span>
-                        <span
-                          className={`text-xs font-medium ${dateTextClass} opacity-70`}
-                        >
-                          {formatQtyShort(group.totalHours)} /{" "}
-                          {DAILY_HOURS_LIMIT} ч
-                        </span>
-                      </div>
+                        {formatQtyShort(group.totalHours)} / {DAILY_HOURS_LIMIT}{" "}
+                        ч
+                      </span>
                     </div>
                   </div>
 
-                  {/* ── Entries ── */}
-                  <div className="bg-card divide-y divide-border">
-                    {group.entries.map((entry) => {
-                      const hours = entry.normHours
-                        ? calcHours(entry.quantity, entry.normHours)
-                        : 0;
+                  {/* Entry rows: timeline outside card border */}
+                  {group.entries.map((entry, idx) => {
+                    const isLast = idx === group.entries.length - 1;
+                    const hours = entry.normHours
+                      ? calcHours(entry.quantity, entry.normHours)
+                      : 0;
 
-                      return (
+                    return (
+                      <div key={entry.id} className="flex">
+                        {/* Timeline cell — outside the card */}
+                        <div
+                          className="relative shrink-0"
+                          style={{ width: TIMELINE_LEFT_WIDTH }}
+                        >
+                          <TimelineCell
+                            color={entry.timelineColorResolved}
+                            mode={entry.connectorMode}
+                          />
+                        </div>
+
+                        {/* Card row */}
                         <LongPressWrapper
-                          key={entry.id}
+                          className={`flex-1 min-w-0 bg-card border-x border-t ${
+                            isLast ? "border-b rounded-b-xl" : ""
+                          } ${cardBorderColor}`}
                           onLongPress={() => handleEditOpen(entry)}
                         >
                           <div
-                            className="flex items-stretch active:bg-accent/50 cursor-pointer"
+                            className="pl-4 pr-4 py-2.5 flex items-center justify-between gap-3 active:bg-accent/50 cursor-pointer"
                             onClick={() => handleEntryTap(entry.article)}
                           >
-                            {/* Timeline cell */}
-                            <div
-                              className="relative shrink-0"
-                              style={{ width: TIMELINE_LEFT_WIDTH }}
-                            >
-                              <TimelineCell
-                                color={entry.timelineColorResolved}
-                                mode={entry.connectorMode}
+                            <div className="min-w-0 flex items-center gap-2">
+                              <span
+                                className="shrink-0 rounded-full"
+                                style={{
+                                  display: "inline-block",
+                                  width: `${TL_LINE_W + 1.5}px`,
+                                  height: `${TL_LINE_W + 1.5}px`,
+                                  backgroundColor: entry.timelineColorResolved,
+                                }}
                               />
+                              <span className="font-mono font-semibold text-sm truncate">
+                                {entry.article}
+                              </span>
                             </div>
-
-                            {/* Article info */}
-                            <div className="flex-1 min-w-0 pr-4 py-2.5 flex items-center justify-between gap-3">
-                              <div className="min-w-0 flex items-center gap-2">
-                                <span
-                                  className="shrink-0 rounded-full"
-                                  style={{
-                                    display: "inline-block",
-                                    width: `${TL_LINE_W + 1.5}px`,
-                                    height: `${TL_LINE_W + 1.5}px`,
-                                    backgroundColor:
-                                      entry.timelineColorResolved,
-                                  }}
-                                />
-                                <span className="font-mono font-semibold text-sm truncate">
-                                  {entry.article}
+                            <div className="flex items-center gap-3 shrink-0">
+                              <span className="text-sm">
+                                {formatQtyShort(entry.quantity)} шт
+                              </span>
+                              {hours > 0 && (
+                                <span className="text-xs text-muted-foreground">
+                                  {formatQtyShort(hours)} ч
                                 </span>
-                              </div>
-                              <div className="flex items-center gap-3 shrink-0">
-                                <span className="text-sm">
-                                  {formatQtyShort(entry.quantity)} шт
-                                </span>
-                                {hours > 0 && (
-                                  <span className="text-xs text-muted-foreground">
-                                    {formatQtyShort(hours)} ч
-                                  </span>
-                                )}
-                              </div>
+                              )}
                             </div>
                           </div>
                         </LongPressWrapper>
-                      );
-                    })}
-                  </div>
+                      </div>
+                    );
+                  })}
                 </div>
               );
             })}

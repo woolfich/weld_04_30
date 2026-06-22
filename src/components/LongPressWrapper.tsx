@@ -1,14 +1,20 @@
-'use client';
+"use client";
 
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from "react";
 
 interface LongPressProps {
   children: React.ReactNode;
   onLongPress: () => void;
   delay?: number;
+  className?: string;
 }
 
-export function LongPressWrapper({ children, onLongPress, delay = 500 }: LongPressProps) {
+export function LongPressWrapper({
+  children,
+  onLongPress,
+  delay = 500,
+  className,
+}: LongPressProps) {
   const [pressing, setPressing] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressTriggered = useRef(false);
@@ -53,7 +59,7 @@ export function LongPressWrapper({ children, onLongPress, delay = 500 }: LongPre
           onLongPress();
         }
       }}
-      className={pressing ? 'opacity-70 transition-opacity' : 'transition-opacity'}
+      className={`${pressing ? "opacity-70" : ""} transition-opacity${className ? " " + className : ""}`}
     >
       {children}
     </div>
