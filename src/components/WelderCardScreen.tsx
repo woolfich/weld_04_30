@@ -723,9 +723,9 @@ export function WelderCardScreen() {
       <div
         className="flex-1 overflow-y-auto"
         style={{
-          backgroundColor: "hsl(var(--muted))",
+          backgroundColor: "hsl(36 40% 74%)",
           backgroundImage:
-            "radial-gradient(circle, hsl(var(--muted-foreground) / 0.35) 1.5px, transparent 1.5px)",
+            "radial-gradient(circle, hsl(36 38% 52%) 1.5px, transparent 1.5px)",
           backgroundSize: "18px 18px",
         }}
       >
