@@ -1,10 +1,12 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useMemo } from 'react';
+import { useLiveQuery } from 'dexie-react-hooks';
 import { db, type WorkEntry, type Welder } from '@/lib/db';
-import { getTodayStr, formatQtyShort, roundToHundredths } from '@/lib/utils';
+import { dateToStr, formatQtyShort, roundToHundredths } from '@/lib/utils';
 import { ArrowLeft } from 'lucide-react';
 import { useAppStore } from '@/lib/store';
+import { useTodayStr } from '@/hooks/use-today-str';
 
 interface WelderDayEntry {
   welderId: number;
@@ -16,24 +18,20 @@ interface WelderDayEntry {
 
 export function DailyScreen() {
   const { setActiveScreen } = useAppStore();
-  const [welders, setWelders] = useState<Welder[]>([]);
-  const [workEntries, setWorkEntries] = useState<WorkEntry[]>([]);
-
-  // Pull fresh data on mount
-  const loadData = useCallback(async () => {
-    setWelders(await db.welders.toArray());
-    setWorkEntries(await db.workEntries.toArray());
-  }, []);
-
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
-
-  const today = getTodayStr();
+  const today = useTodayStr();
+  const welders = useLiveQuery(() => db.welders.toArray(), []) || [];
+  const workEntries =
+    useLiveQuery(
+      () => db.workEntries.toArray(),
+      [],
+    ) || [];
 
   // Filter today's entries and group by welder → article
   const dailySummary = useMemo((): WelderDayEntry[] => {
-    const todayEntries = workEntries.filter(e => e.date === today);
+    const todayEntries = workEntries.filter(
+      (entry) => dateToStr(new Date(entry.createdAt)) === today,
+    );
+
     if (todayEntries.length === 0) return [];
 
     const welderMap = new Map<number, WelderDayEntry>();

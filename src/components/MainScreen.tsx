@@ -14,7 +14,6 @@ import {
   normalizeArticle,
   formatQty,
   formatQtyShort,
-  getTodayStr,
   calcHours,
   sortByUpdatedDesc,
   formatDateShort,
@@ -33,6 +32,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
+import { useTodayStr } from "@/hooks/use-today-str";
 
 export function MainScreen() {
   const [nameInput, setNameInput] = useState("");
@@ -55,15 +55,18 @@ export function MainScreen() {
   const norms = useLiveQuery(() => db.norms.toArray(), []) || [];
   const plans = useLiveQuery(() => db.plans.toArray(), []) || [];
 
-  const today = getTodayStr();
+  const today = useTodayStr();
   const sortedWelders = useMemo(() => sortByUpdatedDesc(welders), [welders]);
 
   // Get today's work summary for a welder (for the center of the row)
   const getTodaySummary = useCallback(
     (welderId: number): string => {
-      const todayEntries = workEntries.filter(
-        (e) => e.welderId === welderId && e.date === today,
-      );
+      const todayEntries = workEntries.filter((e) => {
+        return (
+          e.welderId === welderId &&
+          dateToStr(new Date(e.createdAt)) === today
+        );
+      });
       if (todayEntries.length === 0) return "";
 
       // Group by article and sum quantities
