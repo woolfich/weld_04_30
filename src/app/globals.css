@@ -156,6 +156,14 @@
   user-select: none;
 }
 
+/* Perforated background — light gray-blue with white dots */
+.perforated-bg {
+  background-color: #e3e9f1;
+  background-image: radial-gradient(circle, rgba(255,255,255,0.9) 2.5px, transparent 3.5px);
+  background-size: 22px 22px;
+  background-position: 0 0;
+}
+
 /* Allow text selection in inputs */
 input, textarea {
   -webkit-user-select: auto;

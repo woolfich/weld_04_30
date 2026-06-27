@@ -29,7 +29,7 @@ export default function Home() {
   return (
     <div className="flex flex-col h-screen-dvh bg-background">
       {/* Main content area - fills remaining space */}
-      <main className="flex-1 overflow-hidden">
+      <main className={`flex-1 overflow-hidden ${activeScreen !== 'welder-card' ? 'perforated-bg' : ''} p-3`}>
         {renderScreen()}
       </main>
 

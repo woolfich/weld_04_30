@@ -39,22 +39,14 @@ export function PlanScreen() {
     plan: Plan | null;
   }>({ open: false, plan: null });
 
-  // Добавляем принудительное обновление при изменении
-  const [, setForceUpdate] = React.useState({});
-
   const norms = useLiveQuery(() => db.norms.toArray(), []) || [];
   const plans = useLiveQuery(() => db.plans.toArray(), []) || [];
   const workEntries = useLiveQuery(() => db.workEntries.toArray(), []) || [];
   const welders = useLiveQuery(() => db.welders.toArray(), []) || [];
 
-  // Force refresh when component mounts or when needed
+  // Pull latest data on mount (in case another screen changed the DB)
   React.useEffect(() => {
-    const interval = setInterval(() => {
-      // Force refresh periodically to ensure data is up-to-date
-      forceRefresh();
-    }, 1000); // Refresh every second when component is mounted
-
-    return () => clearInterval(interval);
+    forceRefresh();
   }, []);
 
   // Norm articles for autocomplete
