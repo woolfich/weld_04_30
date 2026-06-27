@@ -1,9 +1,9 @@
 'use client';
 
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useMemo, useEffect } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, type WorkEntry, type Welder } from '@/lib/db';
-import { getTodayStr, formatQtyShort, roundToHundredths, sortByUpdatedDesc } from '@/lib/utils';
+import { getTodayStr, formatQtyShort, roundToHundredths, forceRefresh } from '@/lib/utils';
 import { ArrowLeft } from 'lucide-react';
 import { useAppStore } from '@/lib/store';
 
@@ -16,6 +16,11 @@ interface WelderDayEntry {
 
 export function DailyScreen() {
   const { setActiveScreen } = useAppStore();
+
+  // Pull fresh data on mount (component stays mounted, need to refresh)
+  useEffect(() => {
+    forceRefresh();
+  }, []);
 
   const welders = useLiveQuery(() => db.welders.toArray(), []) || [];
   const workEntries = useLiveQuery(() => db.workEntries.toArray(), []) || [];
