@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-export type Screen = 'main' | 'norms' | 'plan' | 'welder-card';
+export type Screen = 'main' | 'norms' | 'plan' | 'welder-card' | 'daily';
 
 interface AppState {
   activeScreen: Screen;

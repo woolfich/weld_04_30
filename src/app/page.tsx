@@ -7,6 +7,7 @@ import { MainScreen } from '@/components/MainScreen';
 import { NormsScreen } from '@/components/NormsScreen';
 import { PlanScreen } from '@/components/PlanScreen';
 import { WelderCardScreen } from '@/components/WelderCardScreen';
+import { DailyScreen } from '@/components/DailyScreen';
 
 export default function Home() {
   const { activeScreen } = useAppStore();
@@ -21,6 +22,8 @@ export default function Home() {
         return <PlanScreen />;
       case 'welder-card':
         return <WelderCardScreen />;
+      case 'daily':
+        return <DailyScreen />;
       default:
         return <MainScreen />;
     }

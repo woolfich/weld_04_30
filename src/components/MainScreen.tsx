@@ -23,7 +23,7 @@ import {
 } from "@/lib/utils";
 import { LongPressWrapper } from "@/components/LongPressWrapper";
 import { useAppStore } from "@/lib/store";
-import { Plus, Pencil, Trash2, Info, Download, Upload } from "lucide-react";
+import { Plus, Pencil, Trash2, Info, Download, Upload, ListChecks } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -342,7 +342,7 @@ export function MainScreen() {
               <Plus className="w-5 h-5" />
             </button>
           </div>
-          <div className="grid w-full grid-cols-2 gap-2 sm:w-auto sm:flex sm:grid-cols-none sm:gap-2">
+          <div className="grid w-full grid-cols-3 gap-2 sm:w-auto sm:flex sm:grid-cols-none sm:gap-2">
             <button
               onClick={handleImport}
               className="h-10 flex items-center justify-center gap-1 rounded-lg border border-border text-xs active:bg-accent sm:px-2.5"
@@ -358,6 +358,14 @@ export function MainScreen() {
               title="Экспорт"
             >
               <Download className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={() => setActiveScreen('daily')}
+              className="h-10 flex items-center justify-center gap-1 rounded-lg border border-border text-xs active:bg-accent sm:px-2.5"
+              aria-label="Сводка"
+              title="Сводка за день"
+            >
+              <ListChecks className="w-3.5 h-3.5" />
             </button>
           </div>
         </div>
