@@ -1,9 +1,8 @@
 'use client';
 
-import React, { useCallback, useMemo, useEffect } from 'react';
-import { useLiveQuery } from 'dexie-react-hooks';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { db, type WorkEntry, type Welder } from '@/lib/db';
-import { getTodayStr, formatQtyShort, roundToHundredths, forceRefresh } from '@/lib/utils';
+import { getTodayStr, formatQtyShort, roundToHundredths } from '@/lib/utils';
 import { ArrowLeft } from 'lucide-react';
 import { useAppStore } from '@/lib/store';
 
@@ -12,18 +11,23 @@ interface WelderDayEntry {
   welderName: string;
   articles: { article: string; qty: number }[];
   totalQty: number;
+  lastUpdated: Date;
 }
 
 export function DailyScreen() {
   const { setActiveScreen } = useAppStore();
+  const [welders, setWelders] = useState<Welder[]>([]);
+  const [workEntries, setWorkEntries] = useState<WorkEntry[]>([]);
 
-  // Pull fresh data on mount (component stays mounted, need to refresh)
-  useEffect(() => {
-    forceRefresh();
+  // Pull fresh data on mount
+  const loadData = useCallback(async () => {
+    setWelders(await db.welders.toArray());
+    setWorkEntries(await db.workEntries.toArray());
   }, []);
 
-  const welders = useLiveQuery(() => db.welders.toArray(), []) || [];
-  const workEntries = useLiveQuery(() => db.workEntries.toArray(), []) || [];
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   const today = getTodayStr();
 
@@ -40,7 +44,6 @@ export function DailyScreen() {
 
       const existing = welderMap.get(entry.welderId);
       if (existing) {
-        // Add or update article
         const articleIdx = existing.articles.findIndex(a => a.article === entry.article);
         if (articleIdx >= 0) {
           existing.articles[articleIdx].qty = roundToHundredths(existing.articles[articleIdx].qty + entry.quantity);
@@ -48,28 +51,24 @@ export function DailyScreen() {
           existing.articles.push({ article: entry.article, qty: entry.quantity });
         }
         existing.totalQty = roundToHundredths(existing.totalQty + entry.quantity);
+        const entryDate = new Date(entry.updatedAt);
+        if (entryDate.getTime() > existing.lastUpdated.getTime()) {
+          existing.lastUpdated = entryDate;
+        }
       } else {
         welderMap.set(entry.welderId, {
           welderId: entry.welderId,
           welderName: welder.name,
           articles: [{ article: entry.article, qty: entry.quantity }],
           totalQty: entry.quantity,
+          lastUpdated: new Date(entry.updatedAt),
         });
       }
     }
 
-    // Sort by most recently updated welder
     const sorted = Array.from(welderMap.values());
-    return sorted.sort((a, b) => {
-      const aLast = workEntries
-        .filter(e => e.welderId === a.welderId && e.date === today)
-        .sort((x, y) => new Date(y.updatedAt).getTime() - new Date(x.updatedAt).getTime())[0];
-      const bLast = workEntries
-        .filter(e => e.welderId === b.welderId && e.date === today)
-        .sort((x, y) => new Date(y.updatedAt).getTime() - new Date(x.updatedAt).getTime())[0];
-      if (!aLast || !bLast) return 0;
-      return new Date(bLast.updatedAt).getTime() - new Date(aLast.updatedAt).getTime();
-    });
+    sorted.sort((a, b) => b.lastUpdated.getTime() - a.lastUpdated.getTime());
+    return sorted;
   }, [workEntries, welders, today]);
 
   return (
