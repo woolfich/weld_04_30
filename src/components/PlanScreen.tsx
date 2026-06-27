@@ -138,12 +138,18 @@ export function PlanScreen() {
     setEditModal({ open: false, plan: null });
   }, [editModal.plan, editQty]);
 
-  // Check and update plan completion status
+  // Check completion status and auto-delete old completed plans
   React.useEffect(() => {
-    const checkCompletion = async () => {
+    const cleanup = async () => {
+      const TWO_WEEKS_MS = 14 * 24 * 60 * 60 * 1000;
+      const now = Date.now();
+
       for (const plan of plans) {
         if (!plan.id) continue;
+
         const completed = planCompletedQty.get(plan.id) || 0;
+
+        // Update completion status
         if (completed >= plan.targetQty && !plan.completedAt) {
           await db.plans.update(plan.id, {
             completedAt: new Date(),
@@ -155,10 +161,19 @@ export function PlanScreen() {
             updatedAt: new Date(),
           });
         }
+
+        // Auto-delete completed plans older than 2 weeks
+        if (plan.completedAt) {
+          const completedMs = new Date(plan.completedAt).getTime();
+          if (now - completedMs > TWO_WEEKS_MS) {
+            await db.workEntries.where("planId").equals(plan.id).delete();
+            await db.plans.delete(plan.id);
+          }
+        }
       }
     };
-    checkCompletion();
-  }, [plans, planCompletedQty]);
+    cleanup();
+  }, [plans, planCompletedQty, forceRefresh]);
 
   // Get plan info for modal (which welders participated)
   const getPlanInfo = useCallback(
